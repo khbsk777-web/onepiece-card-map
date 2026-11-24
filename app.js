@@ -175,9 +175,11 @@ export function toPlace(e) {
   const lat = e.lat ?? e.center?.lat, lng = e.lon ?? e.center?.lon;
   if (!kind || typeof lat !== "number" || typeof lng !== "number") return null;
   let name = clean(t["name:ja"] || t.name || t.brand || "", 40);
+  const branch = clean(t["branch:ja"] || t.branch || "", 20);
+  if (branch && !name.includes(branch)) name = clean(`${name} ${branch}`, 40); // 例：ローソン ＋ 天神北店
   if (!name) { if (kind === "station") return null; name = KIND[kind][1]; }
   if (kind === "station" && !name.endsWith("駅")) name += "駅";
-  const addr = clean([t["addr:province"], t["addr:city"], t["addr:quarter"] || t["addr:suburb"], t["addr:neighbourhood"], t["addr:block_number"]].filter(Boolean).join(""), 120);
+  const addr = clean(t["addr:full"] || [t["addr:city"], t["addr:suburb"], t["addr:quarter"], t["addr:neighbourhood"], t["addr:block_number"], t["addr:housenumber"]].filter(Boolean).join(""), 120);
   const tagPref = PREFS.includes(t["addr:province"]) ? t["addr:province"] : "";
   const chain = kind === "conv" ? chainOf([t.brand, t["brand:ja"], t["brand:en"], t.name, t["name:ja"], t["name:en"]].filter(Boolean).join(" ")) : null;
   return { id: `${e.type}/${e.id}`, kind, name, lat, lng, addr, tagPref, chain };
@@ -247,7 +249,7 @@ function renderPlaces() {
 
 // ---------- 福岡県のコンビニを全部「⚫」で表示 ----------
 // 引いた地図でも県内の未登録コンビニが全部見える。拡大するとチェーン名の札に切り替わる
-const FK_KEY = "opmap-fukuoka-cvs-v1";
+const FK_KEY = "opmap-fukuoka-cvs-v2";
 const FK_TTL = 24 * 3600e3; // 1日覚えておく
 let fkPlaces = [];
 async function loadFukuoka() {
@@ -310,18 +312,24 @@ function isRegistered(p) {
 function placeGeo(p) {
   if (!p.geo) {
     p.geo = geo(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=ja&lat=${p.lat}&lon=${p.lng}`)
-      .then((pl) => ({ pref: p.tagPref || prefOf(pl.address), addr: p.addr || addrOf(pl.address) }))
+      .then((pl) => ({ pref: p.tagPref || prefOf(pl.address), addr: (p.addr && p.addr.length >= 6) ? p.addr : (addrOf(pl.address) || p.addr) }))
       .catch(() => ({ pref: p.tagPref, addr: p.addr }));
   }
   return p.geo;
 }
 function openPlace(p) {
-  placeGeo(p); // 先に調べ始めておく
+  // 住所：調べ終わったら書きかえる
+  const addrLine = el("p", { class: "addr", text: p.addr ? `📍 ${p.tagPref || ""}${p.addr}` : "📍 住所を調べています…" });
+  placeGeo(p).then((g) => {
+    const full = `${g.pref || ""}${g.addr || ""}`;
+    addrLine.textContent = full ? `📍 ${full}` : "📍 住所がわかりませんでした";
+  });
   const repBtn = el("button", { class: "btn sec", type: "button", text: "📝 くわしく報告する", onclick: () => ready() && openReportForm({ id: null, name: p.name }, p) });
   openSheet(
     p.kind === "conv" ? el("div", { class: "sheet-badge" }, cvsBadge(p.chain)) : null,
     el("h2", { text: p.kind === "conv" ? p.name : `${KIND[p.kind][0]} ${p.name}` }),
-    el("p", { class: "sub", text: [KIND[p.kind][1], p.addr].filter(Boolean).join("・") }),
+    el("p", { class: "sub", text: KIND[p.kind][1] }),
+    addrLine,
     el("p", { class: "small", text: "まだ在庫の報告がありません。見かけたら最初の報告をしてみよう！" }),
     quickButtons((k) => openReportForm({ id: null, name: p.name }, p, k)),
     repBtn,
@@ -445,7 +453,7 @@ async function openStore(id) {
   const gmap = el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" });
   const listBox = el("div");
   const ch = chainOf(s.name);
-  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "sub", text: [s.pref, s.address].filter(Boolean).join(" ") || "住所未登録" }), reportBtn, listBox, gmap);
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), reportBtn, listBox, gmap);
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged] = await Promise.all([S.backend.myVotes(ids, "like"), S.backend.myVotes(ids, "flag")]); } catch {}
   }
@@ -554,8 +562,13 @@ function prefOf(a = {}) {
   const p = a.province || a.state || "";
   return PREFS.includes(p) ? p : "";
 }
+// 住所を日本の順番で組み立てる（都道府県は別に持つので入れない）
 function addrOf(a = {}) {
-  return clean([a.city || a.town || a.village || a.county, a.suburb || a.quarter || a.neighbourhood, a.road].filter(Boolean).join(" "), 120);
+  const parts = [a.county, a.city || a.town || a.village, a.city_district, a.suburb, a.quarter, a.neighbourhood, a.city_block, a.house_number];
+  const out = [];
+  for (const x of parts) if (x && !out.includes(x)) out.push(x);
+  if (out.length < 2 && a.road) out.push(a.road);
+  return clean(out.join(""), 120);
 }
 function openAddStore() {
   if (!ready()) return;
