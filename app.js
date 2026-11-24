@@ -98,9 +98,10 @@ export function visibleStores(stores, reports, { filter, product, pref }, now = 
 // ---------- 地図 ----------
 function initMap() {
   S.map = L.map("map", { zoomControl: false, tap: true }).setView([36.2, 138.2], 5);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    maxZoom: 19, subdomains: "abcd",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+  // 国土地理院の「淡色地図」：無料・APIキー不要・日本語表記（出典の表示が必要）
+  L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", {
+    minZoom: 5, maxZoom: 19, maxNativeZoom: 18,
+    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>',
   }).addTo(S.map);
   L.control.zoom({ position: "topleft" }).addTo(S.map);
   S.layer = L.layerGroup().addTo(S.map);

@@ -51,4 +51,4 @@
 - `tests/rules.test.mjs` … ルールの自動テスト（Firebaseエミュレーターで実行）
 - `vendor/leaflet/` … 地図ライブラリ（外部CDNを使わず同梱）
 
-地図：© OpenStreetMap contributors © CARTO
+地図：国土地理院（淡色地図）／お店の検索：© OpenStreetMap contributors
