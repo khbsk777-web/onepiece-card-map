@@ -98,11 +98,17 @@ export function visibleStores(stores, reports, { filter, product, pref }, now = 
 // ---------- 地図 ----------
 function initMap() {
   S.map = L.map("map", { zoomControl: false, tap: true }).setView([36.2, 138.2], 5);
-  // 国土地理院の「淡色地図」：無料・APIキー不要・日本語表記（出典の表示が必要）
-  L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", {
-    minZoom: 5, maxZoom: 19, maxNativeZoom: 18,
-    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>',
-  }).addTo(S.map);
+  // 国土地理院の地図：無料・APIキー不要（出典の表示が必要）
+  const gsi = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>';
+  const bases = {
+    "📷 航空写真": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", { minZoom: 5, maxZoom: 19, maxNativeZoom: 18, attribution: gsi }),
+    "🗺 地図": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { minZoom: 5, maxZoom: 19, maxNativeZoom: 18, attribution: gsi }),
+  };
+  let saved = null;
+  try { saved = localStorage.getItem("opmap-base"); } catch {}
+  (bases[saved] || bases["📷 航空写真"]).addTo(S.map);
+  L.control.layers(bases, null, { position: "topright", collapsed: false }).addTo(S.map);
+  S.map.on("baselayerchange", (e) => { try { localStorage.setItem("opmap-base", e.name); } catch {} });
   L.control.zoom({ position: "topleft" }).addTo(S.map);
   S.layer = L.layerGroup().addTo(S.map);
   S.map.on("click", (e) => { if (S.mode === "pick") pickPoint(e.latlng); });

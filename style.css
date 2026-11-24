@@ -62,3 +62,4 @@ button{cursor:pointer}
 .stat b{display:block;font-size:20px}
 .search-results button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #eee;background:#fff;padding:10px 4px}
 .leaflet-top{top:30px}
+.leaflet-control-layers{border-radius:12px!important;font-size:13px}.leaflet-control-layers-base label{padding:4px 2px}
