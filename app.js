@@ -4,7 +4,7 @@ import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
 
 // ---------- 定数 ----------
 export const PRODUCTS = { booster: "ブースターパック", extra: "エクストラブースター", premium: "プレミアムブースター", starter: "スタートデッキ", other: "その他" };
-export const STATUS = { in: "在庫あり", low: "残りわずか", out: "売り切れ", soon: "入荷予定" };
+export const STATUS = { in: "在庫あり", low: "残りわずか", out: "売り切れ", soon: "入荷予定", na: "取り扱いなし" };
 export const SALE = { pack: "バラ売り", box: "BOX", lottery: "抽選", other: "その他" };
 const PREFS = "北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県".split(" ");
 const DAYS = 7;            // 何日前までの報告を読むか
@@ -54,7 +54,7 @@ function toast(msg) {
 function errMsg(e) {
   const c = e?.code || e?.message || "";
   const map = {
-    "permission-denied": "報告は30秒に1回までです。少し待ってからもう一度ためしてね（入力内容に問題がある場合もあります）",
+    "permission-denied": "連続で投稿できません（報告は30秒・写真は1分に1回まで）。少し待ってからもう一度ためしてね",
     "auth/email-already-in-use": "このメールアドレスはもう登録されています。ログインしてね",
     "auth/invalid-credential": "メールアドレスかパスワードがちがいます",
     "auth/wrong-password": "メールアドレスかパスワードがちがいます",
@@ -66,6 +66,8 @@ function errMsg(e) {
     "auth/popup-blocked": "ポップアップがブロックされました。もう一度ボタンを押してね",
     "auth/network-request-failed": "通信できませんでした。電波を確認してね",
     already: "もう押しています（1人1回まで）",
+    "no-pref": "住所がわかりませんでした。先に「くわしく報告する」から都道府県を選んで報告してね",
+    "too-big": "写真が大きすぎて小さくできませんでした。別の写真をためしてね",
     unavailable: "通信できませんでした。電波を確認してね",
   };
   for (const k in map) if (c.includes(k)) return map[k];
@@ -299,8 +301,17 @@ function quickButtons(onPick) {
   return el("div", { class: "quick" },
     el("p", { class: "quick-q", text: "ワンピースカード、あった？" }),
     el("div", { class: "quick-row" },
-      ...[["in", "✅ あった"], ["low", "⚠️ 少しあった"], ["out", "❌ なかった"]].map(([k, t]) =>
+      ...[["in", "✅ あった"], ["low", "⚠️ 少しあった"], ["out", "❌ 売り切れ"], ["na", "🚫 取り扱いなし"]].map(([k, t]) =>
         el("button", { type: "button", class: `q ${k}`, text: t, onclick: () => ready() && onPick(k) }))));
+}
+// 未登録のお店を、報告や写真のときに自動で登録する（都道府県がわからなければ null）
+async function storeForPlace(place, prefFallback = "") {
+  const g = await placeGeo(place);
+  const pref = g.pref || prefFallback;
+  if (!pref) return null;
+  const st = await S.backend.ensureStore(osmStoreId(place), { name: place.name, lat: +place.lat.toFixed(6), lng: +place.lng.toFixed(6), address: clean(g.addr || "", 120), pref });
+  if (!S.stores.some((x) => x.id === st.id)) { S.stores.push(st); addPrefOption(st.pref); }
+  return st;
 }
 // OpenStreetMapのお店は「osm_node_123」のような決まったIDで保存する（同じお店が二重にできない）
 export const osmStoreId = (p) => "osm_" + p.id.replace("/", "_");
@@ -333,6 +344,12 @@ function openPlace(p) {
     el("p", { class: "small", text: "まだ在庫の報告がありません。見かけたら最初の報告をしてみよう！" }),
     quickButtons((k) => openReportForm({ id: null, name: p.name }, p, k)),
     repBtn,
+    photoSection(null, async () => {
+      const st = await storeForPlace(p);
+      if (!st) throw new Error("no-pref");
+      render();
+      return st;
+    }),
     el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" }),
     el("p", { class: "small", text: "お店の情報：© OpenStreetMap contributors" }),
   );
@@ -453,7 +470,7 @@ async function openStore(id) {
   const gmap = el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" });
   const listBox = el("div");
   const ch = chainOf(s.name);
-  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), reportBtn, listBox, gmap);
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), reportBtn, photoSection(s, async () => s), listBox, gmap);
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged] = await Promise.all([S.backend.myVotes(ids, "like"), S.backend.myVotes(ids, "flag")]); } catch {}
   }
@@ -493,6 +510,96 @@ function reportItem(r) {
     r.note ? el("p", { class: "note", text: r.note }) : null,
     el("div", { class: "acts" }, like, flag, del));
 }
+// ---------- お店の写真 ----------
+// 写真は端末の中で小さくしてから送る。描き直すので位置情報などの隠れた情報は消える
+const PHOTO_MAX = 1024, PHOTO_LIMIT = 290000, THUMB_MAX = 240, THUMB_LIMIT = 38000;
+async function loadImage(file) {
+  const url = URL.createObjectURL(file);
+  try { const img = new Image(); img.src = url; await img.decode(); return img; }
+  finally { setTimeout(() => URL.revokeObjectURL(url), 2000); }
+}
+export function encodeImage(img, max, limit) {
+  const c = document.createElement("canvas"), ctx = c.getContext("2d");
+  let scale = Math.min(1, max / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+  for (let i = 0; i < 6; i++) {
+    const w = Math.max(1, Math.round((img.naturalWidth || img.width) * scale)), h = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+    c.width = w; c.height = h;
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    for (const q of [0.78, 0.62, 0.48]) {
+      const data = c.toDataURL("image/jpeg", q);
+      if (data.length <= limit) return { data, w, h };
+    }
+    scale *= 0.8;
+  }
+  throw new Error("too-big");
+}
+function photoSection(store, getStore) {
+  const grid = el("div", { class: "photo-grid" });
+  const input = el("input", { type: "file", accept: "image/*", hidden: true });
+  const add = el("button", { class: "btn sec", type: "button", text: "📷 写真を投稿する" });
+  add.onclick = () => { if (ready()) input.click(); };
+  input.onchange = busy(add, async () => {
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    if (!/^image\//.test(file.type) || file.size > 25 * 1024 * 1024) return toast("写真のファイルを選んでね（25MBまで）");
+    add.textContent = "⏳ 写真を小さくしています…";
+    try {
+      const img = await loadImage(file);
+      const full = encodeImage(img, PHOTO_MAX, PHOTO_LIMIT);
+      const thumb = encodeImage(img, THUMB_MAX, THUMB_LIMIT);
+      add.textContent = "⏳ 送信中…";
+      const st = await getStore();
+      const ph = await S.backend.addPhoto({ storeId: st.id, thumb: thumb.data, w: full.w, h: full.h }, full.data);
+      toast("写真を投稿しました！");
+      if (!store) return openStore(st.id);
+      grid.prepend(photoThumb(ph, st));
+      grid.querySelector(".photo-empty")?.remove();
+    } finally { add.textContent = "📷 写真を投稿する"; }
+  });
+  const box = el("div", { class: "photos" },
+    el("p", { class: "meta", style: "margin-top:14px", text: "📷 お店の写真（売り場・棚など）" }),
+    grid, add, input,
+    el("p", { class: "small", text: "人の顔や、ほかの人が写っている写真は投稿しないでね。位置情報などは自動で消してから送ります。" }));
+  if (store) {
+    grid.append(el("p", { class: "small photo-empty", text: "読み込み中…" }));
+    S.backend.listPhotos(store.id).then((list) => {
+      const show = list.filter((x) => (x.flags || 0) < HIDE_FLAGS).sort((a, b) => b.createdAt - a.createdAt).slice(0, 12);
+      grid.replaceChildren(...(show.length ? show.map((ph) => photoThumb(ph, store)) : [el("p", { class: "small photo-empty", text: "まだ写真がありません" })]));
+    }).catch(() => grid.replaceChildren(el("p", { class: "small photo-empty", text: "写真を読み込めませんでした" })));
+  } else {
+    grid.append(el("p", { class: "small photo-empty", text: "まだ写真がありません" }));
+  }
+  return box;
+}
+function photoThumb(ph, store) {
+  const img = el("img", { src: ph.thumb, alt: "お店の写真", loading: "lazy" });
+  return el("button", { type: "button", class: "photo-th", onclick: () => openPhoto(ph, store) }, img,
+    el("span", { class: "photo-time", text: timeAgo(ph.createdAt) }));
+}
+function openPhoto(ph, store) {
+  const big = el("img", { class: "photo-big", src: ph.thumb, alt: "お店の写真" });
+  S.backend.getPhotoData(ph.id).then((d) => { if (d) big.src = d; }).catch(() => {});
+  const mine = S.user && ph.uid === (S.backend.isDemo ? "me" : S.user.uid);
+  const flag = el("button", { type: "button", text: "🚩 通報", disabled: mine });
+  flag.onclick = busy(flag, async () => {
+    if (!ready() || !confirmInline(flag)) return;
+    await S.backend.flagPhoto(ph.id); ph.flags = (ph.flags || 0) + 1;
+    flag.textContent = "🚩 通報済み"; setTimeout(() => (flag.disabled = true)); toast("通報しました。ありがとう！");
+  });
+  const del = mine ? el("button", { type: "button", text: "🗑 削除" }) : null;
+  if (del) del.onclick = busy(del, async () => {
+    if (!confirmInline(del)) return;
+    await S.backend.deletePhoto(ph.id); toast("写真を削除しました"); openStore(store.id);
+  });
+  openSheet(el("h2", { text: store.name }),
+    el("p", { class: "meta", text: `${ph.nickname || "名無し"}・${timeAgo(ph.createdAt)}` }),
+    big,
+    el("div", { class: "acts" }, flag, del),
+    el("button", { class: "btn ghost", type: "button", text: "← お店にもどる", onclick: () => openStore(store.id) }));
+}
+
 // 2回押しで確定（ブラウザのダイアログを使わない）
 function confirmInline(btn) {
   if (btn.dataset.armed) return true;
@@ -527,11 +634,8 @@ function openReportForm(s, place = null, initStatus = "in") {
     if (setCode && !/^[A-Z0-9-]{1,12}$/.test(setCode)) return toast("弾の番号は英数字とハイフンだけで入れてね");
     if (URL_RE.test(n) || /[<>]/.test(n)) return toast("メモにURLや < > は書けません");
     if (place) {
-      const g = await placeGeo(place);
-      const pref = g.pref || prefSel.value;
-      if (!pref) { prefLabel.hidden = false; prefSel.hidden = false; return toast("都道府県を選んでね"); }
-      const st = await S.backend.ensureStore(osmStoreId(place), { name: place.name, lat: +place.lat.toFixed(6), lng: +place.lng.toFixed(6), address: clean(g.addr || "", 120), pref });
-      if (!S.stores.some((x) => x.id === st.id)) { S.stores.push(st); addPrefOption(st.pref); }
+      const st = await storeForPlace(place, prefSel.value);
+      if (!st) { prefLabel.hidden = false; prefSel.hidden = false; return toast("都道府県を選んでね"); }
       s = st;
     }
     const rep = await S.backend.addReport({ storeId: s.id, product: product.get(), setCode, status: status.get(), saleType: sale.get(), note: n });

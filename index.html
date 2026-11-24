@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cyberjapandata.gsi.go.jp; connect-src 'self' https://*.googleapis.com https://nominatim.openstreetmap.org https://overpass-api.de https://overpass.kumi.systems https://www.google.com https://www.recaptcha.net; frame-src https://*.firebaseapp.com https://www.google.com https://www.recaptcha.net; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cyberjapandata.gsi.go.jp; connect-src 'self' https://*.googleapis.com https://nominatim.openstreetmap.org https://overpass-api.de https://overpass.kumi.systems https://www.google.com https://www.recaptcha.net; frame-src https://*.firebaseapp.com https://www.google.com https://www.recaptcha.net; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#14213d">
 <meta name="description" content="ワンピースカードの入荷・在庫情報をみんなで共有する非公式マップ">
@@ -41,7 +41,7 @@
 </div>
 
 <div class="legend" aria-hidden="true">
-  <span><i class="dot in"></i>あり</span><span><i class="dot low"></i>わずか</span><span><i class="dot out"></i>売切</span><span><i class="dot soon"></i>入荷予定</span><span><i class="dot none"></i>情報なし/古い</span><span><b class="cvs mini">セブン</b> コンビニ（拡大で表示）</span><span>📚🏬🧸 その他のお店</span><span><i class="dot" style="background:#111"></i>未登録のコンビニ（福岡県）</span>
+  <span><i class="dot in"></i>あり</span><span><i class="dot low"></i>わずか</span><span><i class="dot out"></i>売切</span><span><i class="dot soon"></i>入荷予定</span><span><i class="dot na"></i>取り扱いなし</span><span><i class="dot none"></i>情報なし/古い</span><span><b class="cvs mini">セブン</b> コンビニ（拡大で表示）</span><span>📚🏬🧸 その他のお店</span><span><i class="dot" style="background:#111"></i>未登録のコンビニ（福岡県）</span>
 </div>
 
 <!-- 下から出てくるパネル（中身はJSで作る） -->

@@ -82,6 +82,20 @@ export function createDemoBackend() {
       if (rep) rep[kind === "like" ? "likes" : "flags"]++;
       save();
     },
+    async listPhotos(storeId) { return wait((d.photos || []).filter((x) => x.storeId === storeId)); },
+    async addPhoto(meta, full) {
+      if (Date.now() - (d.lastPhoto || 0) < 60000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
+      const ph = { id: id(), ...meta, uid: "me", nickname: d.user.nickname, flags: 0, createdAt: Date.now() };
+      d.photos = d.photos || []; d.photoData = d.photoData || {};
+      d.photos.push(ph); d.photoData[ph.id] = full; d.lastPhoto = Date.now(); save(); return ph;
+    },
+    async getPhotoData(pid) { return (d.photoData || {})[pid] || null; },
+    async deletePhoto(pid) { d.photos = (d.photos || []).filter((x) => !(x.id === pid && x.uid === "me")); delete (d.photoData || {})[pid]; save(); },
+    async flagPhoto(pid) {
+      d.photoFlags = d.photoFlags || {};
+      if (d.photoFlags[pid]) throw new Error("already");
+      d.photoFlags[pid] = true; const ph = (d.photos || []).find((x) => x.id === pid); if (ph) ph.flags++; save();
+    },
     async myVotes(ids, kind) {
       const box = kind === "like" ? d.likes : d.flags;
       return new Set(ids.filter((i) => box[i]));

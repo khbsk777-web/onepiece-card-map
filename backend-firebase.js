@@ -128,6 +128,44 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
         tx.update(rRef, { [field]: (r.data()[field] || 0) + 1 });
       });
     },
+    // ----- 写真：一覧用の小さい写真(photos)と、大きい写真(photoData)を分けて保存 -----
+    async listPhotos(storeId) {
+      const snap = await F.getDocs(F.query(F.collection(db, "photos"), F.where("storeId", "==", storeId), F.limit(30)));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data(), createdAt: ts(d.data().createdAt) }));
+    },
+    async addPhoto(meta, full) {
+      const uid = auth.currentUser.uid;
+      const ref = F.doc(F.collection(db, "photos"));
+      const data = { ...meta, uid, nickname: profile.nickname, flags: 0, createdAt: F.serverTimestamp() };
+      const b = F.writeBatch(db);
+      b.set(F.doc(db, "rateLimits", uid), { lastPhoto: F.serverTimestamp() }, { merge: true });
+      b.set(ref, data);
+      b.set(F.doc(db, "photoData", ref.id), { uid, data: full });
+      await b.commit();
+      return { id: ref.id, ...data, createdAt: Date.now() };
+    },
+    async getPhotoData(id) {
+      const snap = await F.getDoc(F.doc(db, "photoData", id));
+      return snap.exists() ? snap.data().data : null;
+    },
+    async deletePhoto(id) {
+      const b = F.writeBatch(db);
+      b.delete(F.doc(db, "photoData", id));
+      b.delete(F.doc(db, "photos", id));
+      await b.commit();
+    },
+    async flagPhoto(id) {
+      const uid = auth.currentUser.uid;
+      const pRef = F.doc(db, "photos", id);
+      const mark = F.doc(db, "photos", id, "flags", uid);
+      await F.runTransaction(db, async (tx) => {
+        const [p, m] = [await tx.get(pRef), await tx.get(mark)];
+        if (!p.exists()) throw new Error("not-found");
+        if (m.exists()) throw new Error("already");
+        tx.set(mark, { createdAt: F.serverTimestamp() });
+        tx.update(pRef, { flags: (p.data().flags || 0) + 1 });
+      });
+    },
     async myVotes(ids, kind) {
       const uid = auth.currentUser?.uid;
       if (!uid) return new Set();
