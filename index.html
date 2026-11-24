@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.basemaps.cartocdn.com; connect-src 'self' https://*.googleapis.com https://nominatim.openstreetmap.org https://www.google.com https://www.recaptcha.net; frame-src https://*.firebaseapp.com https://www.google.com https://www.recaptcha.net; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="theme-color" content="#14213d">
+<meta name="description" content="ワンピースカードの入荷・在庫情報をみんなで共有する非公式マップ">
+<title>ワンピカ在庫マップ（非公式）</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%E2%9A%93%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">⚓ ワンピカ在庫マップ<span class="tag">非公式</span></div>
+  <button id="accountBtn" class="pill" type="button">ログイン</button>
+</header>
+
+<div class="filters" role="toolbar" aria-label="絞り込み">
+  <button class="chip on" data-f="all" type="button">すべて</button>
+  <button class="chip" data-f="stock" type="button">🟢 在庫あり</button>
+  <button class="chip" data-f="today" type="button">🕒 今日の情報</button>
+  <select id="productFilter" class="chip-select" aria-label="商品で絞り込み"></select>
+  <select id="prefFilter" class="chip-select" aria-label="都道府県で絞り込み"><option value="">全国</option></select>
+</div>
+
+<main id="map" aria-label="地図"></main>
+
+<div id="modeBanner" class="mode-banner" hidden>
+  <span>📍 地図をタップしてお店の場所を選んでね</span>
+  <button id="modeCancel" type="button">やめる</button>
+</div>
+
+<div class="fabs">
+  <button id="locateBtn" class="fab small" type="button" aria-label="現在地へ">◎</button>
+  <button id="feedBtn" class="fab small" type="button" aria-label="新着情報">🆕</button>
+  <button id="addStoreBtn" class="fab" type="button">＋ お店を登録</button>
+</div>
+
+<div class="legend" aria-hidden="true">
+  <span><i class="dot in"></i>あり</span><span><i class="dot low"></i>わずか</span><span><i class="dot out"></i>売切</span><span><i class="dot soon"></i>入荷予定</span><span><i class="dot none"></i>情報なし/古い</span>
+</div>
+
+<!-- 下から出てくるパネル（中身はJSで作る） -->
+<section id="sheet" class="sheet" hidden aria-live="polite">
+  <button class="sheet-close" type="button" aria-label="閉じる">×</button>
+  <div id="sheetBody"></div>
+</section>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<div id="demoNote" class="demo-note" hidden>デモモード：データはこの端末の中だけに保存されます</div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
