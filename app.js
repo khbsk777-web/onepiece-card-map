@@ -73,7 +73,7 @@ function errMsg(e) {
 }
 
 // ---------- 状態 ----------
-const S = { backend: null, user: null, stores: [], reports: [], filter: "all", product: "", pref: "", mode: null, map: null, layer: null, me: null, liked: new Set(), flagged: new Set() };
+const S = { showPlaces: true, places: null, backend: null, user: null, stores: [], reports: [], filter: "all", product: "", pref: "", mode: null, map: null, layer: null, me: null, liked: new Set(), flagged: new Set() };
 
 // 店ごとの「いちばん新しい報告」
 export function latestFor(reports, storeId, product) {
@@ -110,8 +110,11 @@ function initMap() {
   L.control.layers(bases, null, { position: "topright", collapsed: false }).addTo(S.map);
   S.map.on("baselayerchange", (e) => { try { localStorage.setItem("opmap-base", e.name); } catch {} });
   L.control.zoom({ position: "topleft" }).addTo(S.map);
+  S.places = L.layerGroup().addTo(S.map);
   S.layer = L.layerGroup().addTo(S.map);
+  S.map.attributionControl.addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>');
   S.map.on("click", (e) => { if (S.mode === "pick") pickPoint(e.latlng); });
+  S.map.on("moveend", () => { renderPlaces(); clearTimeout(placeTimer); placeTimer = setTimeout(loadPlaces, 500); });
 }
 function render() {
   S.layer.clearLayers();
@@ -124,6 +127,109 @@ function render() {
     const icon = L.divIcon({ className: "", html: `<div class="pin ${cls}${stale ? " stale" : ""}"></div>`, iconSize: [26, 26], iconAnchor: [13, 26] });
     L.marker([s.lat, s.lng], { icon, title: s.name, keyboard: true }).on("click", () => openStore(s.id)).addTo(S.layer);
   }
+  renderPlaces();
+}
+
+// ---------- 周辺のお店・駅（OpenStreetMap） ----------
+// まだ登録されていないお店と駅名を、地図を拡大したときだけ表示する
+const PLACE_MIN_ZOOM = 15;   // これ以上拡大したら表示
+const LABEL_ZOOM = 17;       // これ以上でお店の名前も表示（駅名はいつも表示）
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+const KIND = { station: ["🚉", "駅"], conv: ["🏪", "コンビニ"], books: ["📚", "本屋"], mall: ["🏬", "商業施設"], hobby: ["🧸", "おもちゃ・ホビー"], elec: ["🔌", "家電量販店"] };
+export function placeKind(t = {}) {
+  if (t.railway === "station") return "station";
+  switch (t.shop) {
+    case "convenience": return "conv";
+    case "books": return "books";
+    case "mall": case "department_store": return "mall";
+    case "toys": case "games": case "hobby": case "anime": case "video_games": return "hobby";
+    case "electronics": return "elec";
+  }
+  return null;
+}
+export function toPlace(e) {
+  const t = e.tags || {};
+  const kind = placeKind(t);
+  const lat = e.lat ?? e.center?.lat, lng = e.lon ?? e.center?.lon;
+  if (!kind || typeof lat !== "number" || typeof lng !== "number") return null;
+  let name = clean(t["name:ja"] || t.name || t.brand || "", 40);
+  if (!name) { if (kind === "station") return null; name = KIND[kind][1]; }
+  if (kind === "station" && !name.endsWith("駅")) name += "駅";
+  const addr = clean([t["addr:province"], t["addr:city"], t["addr:quarter"] || t["addr:suburb"], t["addr:neighbourhood"], t["addr:block_number"]].filter(Boolean).join(""), 120);
+  return { id: `${e.type}/${e.id}`, kind, name, lat, lng, addr };
+}
+const placeById = new Map();
+const loadedCells = new Set(), loadingCells = new Set();
+let placeTimer, placeWarned = false;
+const CELL = 0.02; // 約2kmのマスごとに読み込んで覚えておく
+function cellsIn(b) {
+  const out = [];
+  for (let y = Math.floor(b.getSouth() / CELL); y <= Math.floor(b.getNorth() / CELL); y++)
+    for (let x = Math.floor(b.getWest() / CELL); x <= Math.floor(b.getEast() / CELL); x++) out.push([y, x]);
+  return out;
+}
+async function fetchPlaces(s, w, n, e) {
+  const bb = `${s},${w},${n},${e}`;
+  const q = `[out:json][timeout:20];(nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|video_games|electronics)$"](${bb});nwr["railway"="station"](${bb}););out center 600;`;
+  for (const url of OVERPASS) {
+    try {
+      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      if (res.ok) return (await res.json()).elements || [];
+    } catch { /* 次のサーバーを試す */ }
+  }
+  throw new Error("overpass");
+}
+async function loadPlaces() {
+  if (!S.showPlaces || S.map.getZoom() < PLACE_MIN_ZOOM) return;
+  const cells = cellsIn(S.map.getBounds()).filter(([y, x]) => !loadedCells.has(`${y}:${x}`) && !loadingCells.has(`${y}:${x}`));
+  if (!cells.length || cells.length > 12) return;
+  const ys = cells.map((c) => c[0]), xs = cells.map((c) => c[1]);
+  const keys = cells.map(([y, x]) => `${y}:${x}`);
+  keys.forEach((k) => loadingCells.add(k));
+  try {
+    const els = await fetchPlaces(Math.min(...ys) * CELL, Math.min(...xs) * CELL, (Math.max(...ys) + 1) * CELL, (Math.max(...xs) + 1) * CELL);
+    for (const e of els) { const p = toPlace(e); if (p) placeById.set(p.id, p); }
+    keys.forEach((k) => loadedCells.add(k));
+    renderPlaces();
+  } catch (e) {
+    if (!placeWarned) { placeWarned = true; toast("周辺のお店を読み込めませんでした。少しあとで地図を動かしてみてね"); }
+  } finally { keys.forEach((k) => loadingCells.delete(k)); }
+}
+function renderPlaces() {
+  if (!S.places) return;
+  S.places.clearLayers();
+  if (!S.showPlaces || S.map.getZoom() < PLACE_MIN_ZOOM) return;
+  const b = S.map.getBounds().pad(0.2), z = S.map.getZoom();
+  let n = 0;
+  for (const p of placeById.values()) {
+    if (!b.contains([p.lat, p.lng])) continue;
+    if (p.kind !== "station" && S.stores.some((s) => distM(s, p) < 40)) continue; // 登録済みは色つきピンで出す
+    if (++n > 400) break;
+    const showName = p.kind === "station" || z >= LABEL_ZOOM;
+    const node = el("div", { class: `poi ${p.kind}` }, el("span", { class: "poi-ic", text: KIND[p.kind][0] }), showName ? el("span", { class: "poi-name", text: p.name }) : null);
+    const icon = L.divIcon({ className: "", html: node, iconSize: [24, 24], iconAnchor: [12, 12] });
+    const station = p.kind === "station";
+    const m = L.marker([p.lat, p.lng], { icon, title: p.name, keyboard: false, interactive: !station, zIndexOffset: station ? -300 : -200 });
+    if (!station) m.on("click", () => openPlace(p));
+    m.addTo(S.places);
+  }
+}
+function openPlace(p) {
+  const reg = el("button", { class: "btn", type: "button", text: "📝 このお店を登録する" });
+  reg.onclick = busy(reg, async () => {
+    if (!ready()) return;
+    let place = null;
+    try { place = await geo(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=ja&lat=${p.lat}&lon=${p.lng}`); } catch {}
+    storeForm({ lat: p.lat, lng: p.lng }, { ...(place || {}), name: p.name });
+  });
+  openSheet(
+    el("h2", { text: `${KIND[p.kind][0]} ${p.name}` }),
+    el("p", { class: "sub", text: [KIND[p.kind][1], p.addr].filter(Boolean).join("・") }),
+    el("div", { class: "warn", text: "まだ登録されていないお店です。カードを売っていたら登録して、在庫を報告してね！" }),
+    reg,
+    el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" }),
+    el("p", { class: "small", text: "お店の情報：© OpenStreetMap contributors" }),
+  );
 }
 
 // ---------- 下から出るパネル ----------
@@ -419,6 +525,16 @@ function initFilters() {
     document.querySelectorAll(".chip[data-f]").forEach((x) => x.classList.toggle("on", x === b));
     render();
   }));
+  const pt = $("#placesToggle");
+  try { S.showPlaces = localStorage.getItem("opmap-places") !== "off"; } catch {}
+  pt.classList.toggle("on", S.showPlaces);
+  pt.onclick = () => {
+    S.showPlaces = !S.showPlaces;
+    pt.classList.toggle("on", S.showPlaces);
+    try { localStorage.setItem("opmap-places", S.showPlaces ? "on" : "off"); } catch {}
+    renderPlaces(); loadPlaces();
+    if (S.showPlaces && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます");
+  };
   const pf = $("#productFilter");
   pf.replaceChildren(el("option", { value: "", text: "全商品" }), ...Object.entries(PRODUCTS).map(([k, v]) => el("option", { value: k, text: v })));
   pf.onchange = () => { S.product = pf.value; render(); };

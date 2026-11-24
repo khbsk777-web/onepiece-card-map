@@ -63,3 +63,8 @@ button{cursor:pointer}
 .search-results button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #eee;background:#fff;padding:10px 4px}
 .leaflet-top{top:30px}
 .leaflet-control-layers{border-radius:12px!important;font-size:13px}.leaflet-control-layers-base label{padding:4px 2px}
+.poi{position:relative;width:24px;height:24px}
+.poi-ic{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#fff;border:2px dashed #14213d;box-shadow:0 1px 4px rgba(0,0,0,.45);font-size:13px;line-height:1}
+.poi.station .poi-ic{border-style:solid}
+.poi-name{position:absolute;left:28px;top:2px;white-space:nowrap;font-size:12px;font-weight:700;color:#111;background:rgba(255,255,255,.9);padding:1px 6px;border-radius:6px;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.poi.station .poi-name{background:#14213d;color:#fff;font-size:13px}
