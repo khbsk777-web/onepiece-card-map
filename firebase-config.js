@@ -14,12 +14,12 @@
 // 空のままだと「デモモード」（データはこの端末の中だけ）で動きます。
 // ============================================================
 export const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  apiKey: "AIzaSyAL3M36ntRBDPWOebOHzohXBs2EedHXw8g",
+  authDomain: "onepiece-card-map.firebaseapp.com",
+  projectId: "onepiece-card-map",
+  storageBucket: "onepiece-card-map.firebasestorage.app",
+  messagingSenderId: "897866636384",
+  appId: "1:897866636384:web:a595857a2a955ac3bd7705",
 };
 
 // App Check（reCAPTCHA v3）のサイトキー。空なら App Check なしで動きます。
