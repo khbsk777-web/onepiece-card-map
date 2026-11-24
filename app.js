@@ -54,7 +54,7 @@ function toast(msg) {
 function errMsg(e) {
   const c = e?.code || e?.message || "";
   const map = {
-    "permission-denied": "連続投稿の制限中か、入力内容に問題があります。少し待ってからもう一度ためしてね",
+    "permission-denied": "報告は30秒に1回までです。少し待ってからもう一度ためしてね（入力内容に問題がある場合もあります）",
     "auth/email-already-in-use": "このメールアドレスはもう登録されています。ログインしてね",
     "auth/invalid-credential": "メールアドレスかパスワードがちがいます",
     "auth/wrong-password": "メールアドレスかパスワードがちがいます",
@@ -132,8 +132,8 @@ function render() {
 
 // ---------- 周辺のお店・駅（OpenStreetMap） ----------
 // まだ登録されていないお店と駅名を、地図を拡大したときだけ表示する
-const PLACE_MIN_ZOOM = 15;   // これ以上拡大したら表示
-const LABEL_ZOOM = 17;       // これ以上でお店の名前も表示（駅名はいつも表示）
+const PLACE_MIN_ZOOM = 14;   // これ以上拡大したら表示
+const LABEL_ZOOM = 16;       // これ以上でお店の名前も表示（駅名はいつも表示）
 const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
 const KIND = { station: ["🚉", "駅"], conv: ["🏪", "コンビニ"], books: ["📚", "本屋"], mall: ["🏬", "商業施設"], hobby: ["🧸", "おもちゃ・ホビー"], elec: ["🔌", "家電量販店"] };
 export function placeKind(t = {}) {
@@ -156,7 +156,8 @@ export function toPlace(e) {
   if (!name) { if (kind === "station") return null; name = KIND[kind][1]; }
   if (kind === "station" && !name.endsWith("駅")) name += "駅";
   const addr = clean([t["addr:province"], t["addr:city"], t["addr:quarter"] || t["addr:suburb"], t["addr:neighbourhood"], t["addr:block_number"]].filter(Boolean).join(""), 120);
-  return { id: `${e.type}/${e.id}`, kind, name, lat, lng, addr };
+  const tagPref = PREFS.includes(t["addr:province"]) ? t["addr:province"] : "";
+  return { id: `${e.type}/${e.id}`, kind, name, lat, lng, addr, tagPref };
 }
 const placeById = new Map();
 const loadedCells = new Set(), loadingCells = new Set();
@@ -170,7 +171,7 @@ function cellsIn(b) {
 }
 async function fetchPlaces(s, w, n, e) {
   const bb = `${s},${w},${n},${e}`;
-  const q = `[out:json][timeout:20];(nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|video_games|electronics)$"](${bb});nwr["railway"="station"](${bb}););out center 600;`;
+  const q = `[out:json][timeout:20];(nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|video_games|electronics)$"](${bb});nwr["railway"="station"](${bb}););out center 1500;`;
   for (const url of OVERPASS) {
     try {
       const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
@@ -203,8 +204,8 @@ function renderPlaces() {
   let n = 0;
   for (const p of placeById.values()) {
     if (!b.contains([p.lat, p.lng])) continue;
-    if (p.kind !== "station" && S.stores.some((s) => distM(s, p) < 40)) continue; // 登録済みは色つきピンで出す
-    if (++n > 400) break;
+    if (p.kind !== "station" && isRegistered(p)) continue; // 報告があるお店は色つきピンで出す
+    if (++n > 600) break;
     const showName = p.kind === "station" || z >= LABEL_ZOOM;
     const node = el("div", { class: `poi ${p.kind}` }, el("span", { class: "poi-ic", text: KIND[p.kind][0] }), showName ? el("span", { class: "poi-name", text: p.name }) : null);
     const icon = L.divIcon({ className: "", html: node, iconSize: [24, 24], iconAnchor: [12, 12] });
@@ -214,19 +215,29 @@ function renderPlaces() {
     m.addTo(S.places);
   }
 }
+// OpenStreetMapのお店は「osm_node_123」のような決まったIDで保存する（同じお店が二重にできない）
+export const osmStoreId = (p) => "osm_" + p.id.replace("/", "_");
+function isRegistered(p) {
+  const sid = osmStoreId(p);
+  return S.stores.some((s) => s.id === sid || (s.name === p.name && distM(s, p) < 60));
+}
+// 都道府県と住所を調べる（1回だけ）
+function placeGeo(p) {
+  if (!p.geo) {
+    p.geo = geo(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=ja&lat=${p.lat}&lon=${p.lng}`)
+      .then((pl) => ({ pref: p.tagPref || prefOf(pl.address), addr: p.addr || addrOf(pl.address) }))
+      .catch(() => ({ pref: p.tagPref, addr: p.addr }));
+  }
+  return p.geo;
+}
 function openPlace(p) {
-  const reg = el("button", { class: "btn", type: "button", text: "📝 このお店を登録する" });
-  reg.onclick = busy(reg, async () => {
-    if (!ready()) return;
-    let place = null;
-    try { place = await geo(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=ja&lat=${p.lat}&lon=${p.lng}`); } catch {}
-    storeForm({ lat: p.lat, lng: p.lng }, { ...(place || {}), name: p.name });
-  });
+  placeGeo(p); // 先に調べ始めておく
+  const repBtn = el("button", { class: "btn", type: "button", text: "📝 在庫を報告する", onclick: () => ready() && openReportForm({ id: null, name: p.name }, p) });
   openSheet(
     el("h2", { text: `${KIND[p.kind][0]} ${p.name}` }),
     el("p", { class: "sub", text: [KIND[p.kind][1], p.addr].filter(Boolean).join("・") }),
-    el("div", { class: "warn", text: "まだ登録されていないお店です。カードを売っていたら登録して、在庫を報告してね！" }),
-    reg,
+    el("p", { class: "small", text: "まだ在庫の報告がありません。見かけたら最初の報告をしてみよう！" }),
+    repBtn,
     el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" }),
     el("p", { class: "small", text: "お店の情報：© OpenStreetMap contributors" }),
   );
@@ -402,22 +413,35 @@ function seg(options, initial) {
   }
   return { box, get: () => val };
 }
-function openReportForm(s) {
+function openReportForm(s, place = null) {
   const product = seg(PRODUCTS, "booster");
   const status = seg(STATUS, "in");
   const sale = seg(SALE, "pack");
   const code = el("input", { type: "text", maxLength: 12, placeholder: "例：OP-14（わからなければ空でOK）", autocapitalize: "characters" });
   const note = el("textarea", { maxLength: 100, placeholder: "例：レジ横に10パックくらい（100文字まで・URL不可）" });
   const send = el("button", { class: "btn", type: "button", text: "報告する" });
+  // 未登録のお店：都道府県がわからないときだけ選んでもらう
+  const prefLabel = el("label", { text: "都道府県", hidden: true });
+  const prefSel = el("select", { hidden: true }, el("option", { value: "", text: "都道府県を選ぶ" }), ...PREFS.map((x) => el("option", { value: x, text: x })));
+  if (place) placeGeo(place).then((g) => { if (!g.pref) { prefLabel.hidden = false; prefSel.hidden = false; } });
   send.onclick = busy(send, async () => {
     const setCode = clean(code.value, 12).toUpperCase();
     const n = clean(note.value, 100);
     if (setCode && !/^[A-Z0-9-]{1,12}$/.test(setCode)) return toast("弾の番号は英数字とハイフンだけで入れてね");
     if (URL_RE.test(n) || /[<>]/.test(n)) return toast("メモにURLや < > は書けません");
+    if (place) {
+      const g = await placeGeo(place);
+      const pref = g.pref || prefSel.value;
+      if (!pref) { prefLabel.hidden = false; prefSel.hidden = false; return toast("都道府県を選んでね"); }
+      const st = await S.backend.ensureStore(osmStoreId(place), { name: place.name, lat: +place.lat.toFixed(6), lng: +place.lng.toFixed(6), address: clean(g.addr || "", 120), pref });
+      if (!S.stores.some((x) => x.id === st.id)) { S.stores.push(st); addPrefOption(st.pref); }
+      s = st;
+    }
     const rep = await S.backend.addReport({ storeId: s.id, product: product.get(), setCode, status: status.get(), saleType: sale.get(), note: n });
     S.reports.unshift(rep); render(); toast("報告ありがとう！ +10pt"); openStore(s.id);
   });
   openSheet(el("h2", { text: "在庫を報告" }), el("p", { class: "sub", text: s.name }),
+    prefLabel, prefSel,
     el("label", { text: "商品" }), product.box,
     el("label", { text: "弾の番号（任意）" }), code,
     el("label", { text: "いまの状態" }), status.box,

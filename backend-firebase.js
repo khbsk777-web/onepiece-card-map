@@ -89,6 +89,18 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
       await b.commit();
       return { id: ref.id, ...s, createdBy: uid, createdAt: Date.now() };
     },
+    // 決まったIDのお店：なければ作る、あればそのまま使う
+    async ensureStore(id, st) {
+      const ref = F.doc(db, "stores", id);
+      const snap = await F.getDoc(ref);
+      if (snap.exists()) return { id, ...snap.data() };
+      const uid = auth.currentUser.uid;
+      const b = F.writeBatch(db);
+      b.set(F.doc(db, "rateLimits", uid), { lastStore: F.serverTimestamp() }, { merge: true });
+      b.set(ref, { ...st, createdBy: uid, createdAt: F.serverTimestamp() });
+      await b.commit();
+      return { id, ...st, createdBy: uid, createdAt: Date.now() };
+    },
     async addReport(r) {
       const uid = auth.currentUser.uid;
       const ref = F.doc(F.collection(db, "reports"));

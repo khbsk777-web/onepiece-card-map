@@ -57,8 +57,15 @@ export function createDemoBackend() {
       return wait(d.reports.filter((r) => r.createdAt >= since).sort((a, b) => b.createdAt - a.createdAt));
     },
     async addStore(s) {
-      if (Date.now() - d.lastStore < 120000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
+      if (Date.now() - d.lastStore < 30000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
       const st = { id: id(), ...s, createdBy: "me", createdAt: Date.now() };
+      d.stores.push(st); d.lastStore = Date.now(); save(); return st;
+    },
+    async ensureStore(sid, s) {
+      const ex = d.stores.find((x) => x.id === sid);
+      if (ex) return ex;
+      if (Date.now() - d.lastStore < 30000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
+      const st = { id: sid, ...s, createdBy: "me", createdAt: Date.now() };
       d.stores.push(st); d.lastStore = Date.now(); save(); return st;
     },
     async addReport(r) {
