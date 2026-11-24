@@ -73,7 +73,7 @@ function errMsg(e) {
 }
 
 // ---------- 状態 ----------
-const S = { showPlaces: true, places: null, backend: null, user: null, stores: [], reports: [], filter: "all", product: "", pref: "", mode: null, map: null, layer: null, me: null, liked: new Set(), flagged: new Set() };
+const S = { placesMode: "all", places: null, backend: null, user: null, stores: [], reports: [], filter: "all", product: "", pref: "", mode: null, map: null, layer: null, me: null, liked: new Set(), flagged: new Set() };
 
 // 店ごとの「いちばん新しい報告」
 export function latestFor(reports, storeId, product) {
@@ -124,7 +124,9 @@ function render() {
     const r = latestFor(S.reports, s.id, S.product);
     const cls = r ? r.status : "none";
     const stale = r && now - r.createdAt > STALE_H * 3600e3;
-    const icon = L.divIcon({ className: "", html: `<div class="pin ${cls}${stale ? " stale" : ""}"></div>`, iconSize: [26, 26], iconAnchor: [13, 26] });
+    const ch = chainOf(s.name);
+    const wrap = el("div", { class: "pinwrap" }, el("div", { class: `pin ${cls}${stale ? " stale" : ""}` }), ch ? cvsBadge(ch) : null);
+    const icon = L.divIcon({ className: "", html: wrap, iconSize: [26, 26], iconAnchor: [13, 26] });
     L.marker([s.lat, s.lng], { icon, title: s.name, keyboard: true }).on("click", () => openStore(s.id)).addTo(S.layer);
   }
   renderPlaces();
@@ -147,6 +149,22 @@ export function placeKind(t = {}) {
   }
   return null;
 }
+// コンビニのチェーン（ロゴは使わず、文字と色で見分ける）
+const CHAINS = [
+  ["seven", "セブン", /セブン|7-?eleven|seven/i, "#ee7c00", "#fff"],
+  ["famima", "ファミマ", /ファミリーマート|ファミマ|familymart|family mart/i, "#00973c", "#fff"],
+  ["lawson", "ローソン", /ローソン|lawson/i, "#0b5fb0", "#fff"],
+  ["ministop", "ミニストップ", /ミニストップ|ministop/i, "#ffd400", "#1d2c6b"],
+  ["daily", "デイリー", /デイリーヤマザキ|ヤマザキ|daily ?yamazaki/i, "#d7000f", "#fff"],
+  ["seico", "セコマ", /セイコーマート|セコマ|seicomart|seico ?mart/i, "#f08300", "#fff"],
+  ["poplar", "ポプラ", /ポプラ|poplar/i, "#b5121b", "#fff"],
+  ["newdays", "NewDays", /newdays|ニューデイズ/i, "#00875a", "#fff"],
+];
+export function chainOf(text) {
+  if (!text) return null;
+  for (const [key, label, re, bg, fg] of CHAINS) if (re.test(text)) return { key, label, bg, fg };
+  return null;
+}
 export function toPlace(e) {
   const t = e.tags || {};
   const kind = placeKind(t);
@@ -157,7 +175,8 @@ export function toPlace(e) {
   if (kind === "station" && !name.endsWith("駅")) name += "駅";
   const addr = clean([t["addr:province"], t["addr:city"], t["addr:quarter"] || t["addr:suburb"], t["addr:neighbourhood"], t["addr:block_number"]].filter(Boolean).join(""), 120);
   const tagPref = PREFS.includes(t["addr:province"]) ? t["addr:province"] : "";
-  return { id: `${e.type}/${e.id}`, kind, name, lat, lng, addr, tagPref };
+  const chain = kind === "conv" ? chainOf([t.brand, t["brand:ja"], t["brand:en"], t.name, t["name:ja"], t["name:en"]].filter(Boolean).join(" ")) : null;
+  return { id: `${e.type}/${e.id}`, kind, name, lat, lng, addr, tagPref, chain };
 }
 const placeById = new Map();
 const loadedCells = new Set(), loadingCells = new Set();
@@ -181,7 +200,7 @@ async function fetchPlaces(s, w, n, e) {
   throw new Error("overpass");
 }
 async function loadPlaces() {
-  if (!S.showPlaces || S.map.getZoom() < PLACE_MIN_ZOOM) return;
+  if (S.placesMode === "off" || S.map.getZoom() < PLACE_MIN_ZOOM) return;
   const cells = cellsIn(S.map.getBounds()).filter(([y, x]) => !loadedCells.has(`${y}:${x}`) && !loadingCells.has(`${y}:${x}`));
   if (!cells.length || cells.length > 12) return;
   const ys = cells.map((c) => c[0]), xs = cells.map((c) => c[1]);
@@ -199,21 +218,38 @@ async function loadPlaces() {
 function renderPlaces() {
   if (!S.places) return;
   S.places.clearLayers();
-  if (!S.showPlaces || S.map.getZoom() < PLACE_MIN_ZOOM) return;
+  if (S.placesMode === "off" || S.map.getZoom() < PLACE_MIN_ZOOM) return;
   const b = S.map.getBounds().pad(0.2), z = S.map.getZoom();
   let n = 0;
   for (const p of placeById.values()) {
     if (!b.contains([p.lat, p.lng])) continue;
+    if (S.placesMode === "conv" && p.kind !== "conv" && p.kind !== "station") continue;
     if (p.kind !== "station" && isRegistered(p)) continue; // 報告があるお店は色つきピンで出す
     if (++n > 600) break;
     const showName = p.kind === "station" || z >= LABEL_ZOOM;
-    const node = el("div", { class: `poi ${p.kind}` }, el("span", { class: "poi-ic", text: KIND[p.kind][0] }), showName ? el("span", { class: "poi-name", text: p.name }) : null);
+    const node = p.kind === "conv"
+      ? el("div", { class: "poi conv" }, cvsBadge(p.chain), showName ? el("span", { class: "poi-name below", text: p.name }) : null)
+      : el("div", { class: `poi ${p.kind}` }, el("span", { class: "poi-ic", text: KIND[p.kind][0] }), showName ? el("span", { class: "poi-name", text: p.name }) : null);
     const icon = L.divIcon({ className: "", html: node, iconSize: [24, 24], iconAnchor: [12, 12] });
     const station = p.kind === "station";
-    const m = L.marker([p.lat, p.lng], { icon, title: p.name, keyboard: false, interactive: !station, zIndexOffset: station ? -300 : -200 });
+    const m = L.marker([p.lat, p.lng], { icon, title: p.name, keyboard: false, interactive: !station, zIndexOffset: station ? -300 : p.kind === "conv" ? -100 : -200 });
     if (!station) m.on("click", () => openPlace(p));
     m.addTo(S.places);
   }
+}
+// コンビニの目印：チェーン名の札（色は上の表で決めた値だけを使う）
+function cvsBadge(c) {
+  const b = el("span", { class: "cvs", text: c ? c.label : "🏪 コンビニ" });
+  if (c) { b.style.background = c.bg; b.style.color = c.fg; }
+  return b;
+}
+// 「あった／少し／なかった」のかんたん報告ボタン
+function quickButtons(onPick) {
+  return el("div", { class: "quick" },
+    el("p", { class: "quick-q", text: "ワンピースカード、あった？" }),
+    el("div", { class: "quick-row" },
+      ...[["in", "✅ あった"], ["low", "⚠️ 少しあった"], ["out", "❌ なかった"]].map(([k, t]) =>
+        el("button", { type: "button", class: `q ${k}`, text: t, onclick: () => ready() && onPick(k) }))));
 }
 // OpenStreetMapのお店は「osm_node_123」のような決まったIDで保存する（同じお店が二重にできない）
 export const osmStoreId = (p) => "osm_" + p.id.replace("/", "_");
@@ -232,11 +268,13 @@ function placeGeo(p) {
 }
 function openPlace(p) {
   placeGeo(p); // 先に調べ始めておく
-  const repBtn = el("button", { class: "btn", type: "button", text: "📝 在庫を報告する", onclick: () => ready() && openReportForm({ id: null, name: p.name }, p) });
+  const repBtn = el("button", { class: "btn sec", type: "button", text: "📝 くわしく報告する", onclick: () => ready() && openReportForm({ id: null, name: p.name }, p) });
   openSheet(
-    el("h2", { text: `${KIND[p.kind][0]} ${p.name}` }),
+    p.kind === "conv" ? el("div", { class: "sheet-badge" }, cvsBadge(p.chain)) : null,
+    el("h2", { text: p.kind === "conv" ? p.name : `${KIND[p.kind][0]} ${p.name}` }),
     el("p", { class: "sub", text: [KIND[p.kind][1], p.addr].filter(Boolean).join("・") }),
     el("p", { class: "small", text: "まだ在庫の報告がありません。見かけたら最初の報告をしてみよう！" }),
+    quickButtons((k) => openReportForm({ id: null, name: p.name }, p, k)),
     repBtn,
     el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" }),
     el("p", { class: "small", text: "お店の情報：© OpenStreetMap contributors" }),
@@ -353,10 +391,12 @@ async function openStore(id) {
   if (!s) return;
   const reps = S.reports.filter((r) => r.storeId === id);
   const ids = reps.map((r) => r.id);
-  const reportBtn = el("button", { class: "btn", type: "button", text: "📝 在庫を報告する", onclick: () => ready() && openReportForm(s) });
+  const reportBtn = el("div", {}, quickButtons((k) => openReportForm(s, null, k)),
+    el("button", { class: "btn sec", type: "button", text: "📝 くわしく報告する", onclick: () => ready() && openReportForm(s) }));
   const gmap = el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" });
   const listBox = el("div");
-  openSheet(el("h2", { text: s.name }), el("p", { class: "sub", text: [s.pref, s.address].filter(Boolean).join(" ") || "住所未登録" }), reportBtn, listBox, gmap);
+  const ch = chainOf(s.name);
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "sub", text: [s.pref, s.address].filter(Boolean).join(" ") || "住所未登録" }), reportBtn, listBox, gmap);
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged] = await Promise.all([S.backend.myVotes(ids, "like"), S.backend.myVotes(ids, "flag")]); } catch {}
   }
@@ -413,9 +453,9 @@ function seg(options, initial) {
   }
   return { box, get: () => val };
 }
-function openReportForm(s, place = null) {
+function openReportForm(s, place = null, initStatus = "in") {
   const product = seg(PRODUCTS, "booster");
-  const status = seg(STATUS, "in");
+  const status = seg(STATUS, initStatus);
   const sale = seg(SALE, "pack");
   const code = el("input", { type: "text", maxLength: 12, placeholder: "例：OP-14（わからなければ空でOK）", autocapitalize: "characters" });
   const note = el("textarea", { maxLength: 100, placeholder: "例：レジ横に10パックくらい（100文字まで・URL不可）" });
@@ -549,15 +589,14 @@ function initFilters() {
     document.querySelectorAll(".chip[data-f]").forEach((x) => x.classList.toggle("on", x === b));
     render();
   }));
-  const pt = $("#placesToggle");
-  try { S.showPlaces = localStorage.getItem("opmap-places") !== "off"; } catch {}
-  pt.classList.toggle("on", S.showPlaces);
-  pt.onclick = () => {
-    S.showPlaces = !S.showPlaces;
-    pt.classList.toggle("on", S.showPlaces);
-    try { localStorage.setItem("opmap-places", S.showPlaces ? "on" : "off"); } catch {}
+  const pm = $("#placesMode");
+  try { const v = localStorage.getItem("opmap-places-mode"); if (["all", "conv", "off"].includes(v)) S.placesMode = v; } catch {}
+  pm.value = S.placesMode;
+  pm.onchange = () => {
+    S.placesMode = pm.value;
+    try { localStorage.setItem("opmap-places-mode", S.placesMode); } catch {}
     renderPlaces(); loadPlaces();
-    if (S.showPlaces && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます");
+    if (S.placesMode !== "off" && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます");
   };
   const pf = $("#productFilter");
   pf.replaceChildren(el("option", { value: "", text: "全商品" }), ...Object.entries(PRODUCTS).map(([k, v]) => el("option", { value: k, text: v })));
