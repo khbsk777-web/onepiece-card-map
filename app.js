@@ -143,14 +143,15 @@ function render() {
 const PLACE_MIN_ZOOM = 14;   // これ以上拡大したら表示
 const LABEL_ZOOM = 16;       // これ以上でお店の名前も表示（駅名はいつも表示）
 const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
-const KIND = { station: ["🚉", "駅"], conv: ["🏪", "コンビニ"], books: ["📚", "本屋"], mall: ["🏬", "商業施設"], hobby: ["🧸", "おもちゃ・ホビー"], elec: ["🔌", "家電量販店"] };
+const KIND = { station: ["🚉", "駅"], conv: ["🏪", "コンビニ"], books: ["📚", "本屋"], mall: ["🏬", "商業施設"], hobby: ["🃏", "カード・ホビー店"], elec: ["🔌", "家電量販店"] };
 export function placeKind(t = {}) {
   if (t.railway === "station") return "station";
   switch (t.shop) {
     case "convenience": return "conv";
     case "books": return "books";
     case "mall": case "department_store": return "mall";
-    case "toys": case "games": case "hobby": case "anime": case "video_games": return "hobby";
+    case "toys": case "games": case "hobby": case "anime": case "video_games": case "collector": return "hobby";
+    case "supermarket": return /イオン|aeon/i.test(`${t.name || ""} ${t.brand || ""}`) ? "mall" : null;
     case "electronics": return "elec";
   }
   return null;
@@ -198,7 +199,7 @@ function cellsIn(b) {
 }
 async function fetchPlaces(s, w, n, e) {
   const bb = `${s},${w},${n},${e}`;
-  const q = `[out:json][timeout:20];(nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|video_games|electronics)$"](${bb});nwr["railway"="station"](${bb}););out center 1500;`;
+  const q = `[out:json][timeout:20];(nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|video_games|collector|electronics)$"](${bb});nwr["shop"="supermarket"]["name"~"イオン|AEON"](${bb});nwr["railway"="station"](${bb}););out center 1500;`;
   return fetchOverpass(q);
 }
 async function fetchOverpass(q) {
@@ -251,7 +252,9 @@ function renderPlaces() {
 
 // ---------- 福岡県のコンビニを全部「⚫」で表示 ----------
 // 引いた地図でも県内の未登録コンビニが全部見える。拡大するとチェーン名の札に切り替わる
-const FK_KEY = "opmap-fukuoka-cvs-v2";
+// 引いた地図での点の色（種類ごと）
+const FK_COLOR = { conv: "#111111", books: "#0d9488", mall: "#7c3aed", hobby: "#db2777" };
+const FK_KEY = "opmap-fukuoka-v3";
 const FK_TTL = 24 * 3600e3; // 1日覚えておく
 let fkPlaces = [];
 async function loadFukuoka() {
@@ -261,20 +264,21 @@ async function loadFukuoka() {
     setFukuoka(cached.list);
   } else {
     try {
-      const els = await fetchOverpass('[out:json][timeout:60];area["ISO3166-2"="JP-40"]->.a;nwr["shop"="convenience"](area.a);out center 6000;');
-      const list = els.map(toPlace).filter((p) => p && p.kind === "conv")
-        .map(({ id, name, lat, lng, addr, chain }) => ({ id, name, lat, lng, addr, chain }));
+      // コンビニ・本屋・商業施設（イオンモールなど）・カード／ホビー店
+      const els = await fetchOverpass('[out:json][timeout:90];area["ISO3166-2"="JP-40"]->.a;(nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|collector)$"](area.a);nwr["shop"="supermarket"]["name"~"イオン|AEON"](area.a););out center 12000;');
+      const list = els.map(toPlace).filter((p) => p && FK_COLOR[p.kind])
+        .map(({ id, kind, name, lat, lng, addr, chain }) => ({ id, kind, name, lat, lng, addr, chain }));
       setFukuoka(list);
       try { localStorage.setItem(FK_KEY, JSON.stringify({ t: Date.now(), list })); } catch {}
     } catch {
-      toast("福岡県のコンビニを読み込めませんでした。あとで開き直してみてね");
+      toast("福岡県のお店を読み込めませんでした。あとで開き直してみてね");
       return;
     }
   }
   renderFukuoka(); renderPlaces();
 }
 function setFukuoka(list) {
-  fkPlaces = list.map((p) => ({ ...p, kind: "conv", tagPref: "福岡県" }));
+  fkPlaces = list.map((p) => ({ ...p, tagPref: "福岡県" }));
   for (const p of fkPlaces) if (!placeById.has(p.id)) placeById.set(p.id, p);
 }
 function renderFukuoka() {
@@ -285,8 +289,9 @@ function renderFukuoka() {
   const r = z < 9 ? 2.5 : z < 11 ? 3.5 : 5;
   const b = S.map.getBounds().pad(0.1);
   for (const p of fkPlaces) {
+    if (S.placesMode === "conv" && p.kind !== "conv") continue;
     if (!b.contains([p.lat, p.lng]) || isRegistered(p)) continue;
-    L.circleMarker([p.lat, p.lng], { renderer: S.canvas, radius: r, weight: 1, color: "#fff", fillColor: "#111", fillOpacity: 0.9 })
+    L.circleMarker([p.lat, p.lng], { renderer: S.canvas, radius: r, weight: 1, color: "#fff", fillColor: FK_COLOR[p.kind] || "#111", fillOpacity: 0.9 })
       .on("click", () => openPlace(placeById.get(p.id) || p)).addTo(S.fk);
   }
 }
@@ -762,7 +767,7 @@ function initFilters() {
     S.placesMode = pm.value;
     try { localStorage.setItem("opmap-places-mode", S.placesMode); } catch {}
     renderPlaces(); loadPlaces(); renderFukuoka();
-    if (S.placesMode !== "off" && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます（福岡県のコンビニは⚫で表示中）");
+    if (S.placesMode !== "off" && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます（福岡県のお店は点で表示中）");
   };
   const pf = $("#productFilter");
   pf.replaceChildren(el("option", { value: "", text: "全商品" }), ...Object.entries(PRODUCTS).map(([k, v]) => el("option", { value: k, text: v })));
