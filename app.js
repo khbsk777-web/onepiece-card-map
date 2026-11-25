@@ -257,24 +257,35 @@ const FK_COLOR = { conv: "#111111", books: "#0d9488", mall: "#7c3aed", hobby: "#
 const FK_KEY = "opmap-fukuoka-v3";
 const FK_TTL = 24 * 3600e3; // 1日覚えておく
 let fkPlaces = [];
+// ① スマホに覚えている分をすぐ表示 → ② サイトに置いた data/fukuoka.json（毎日自動更新）で最新に
+// → ③ それも無いときだけ OpenStreetMap に直接聞く（時間がかかる）
 async function loadFukuoka() {
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(FK_KEY)); } catch {}
-  if (cached && Date.now() - cached.t < FK_TTL && Array.isArray(cached.list)) {
-    setFukuoka(cached.list);
-  } else {
+  if (cached && Array.isArray(cached.list)) { setFukuoka(cached.list); renderFukuoka(); renderPlaces(); }
+  if (cached && Date.now() - cached.t < FK_TTL && cached.src === "static") return;
+  const pack = (els) => els.map(toPlace).filter((p) => p && FK_COLOR[p.kind])
+    .map(({ id, kind, name, lat, lng, addr, chain }) => ({ id, kind, name, lat, lng, addr, chain }));
+  let list = null, src = "static";
+  for (const url of ["data/fukuoka.json", "https://raw.githubusercontent.com/khbsk777-web/onepiece-card-map/main/data/fukuoka.json"]) {
+    try {
+      const res = await fetch(url, { cache: "no-cache" });
+      if (res.ok) { const j = await res.json(); if (Array.isArray(j.elements) && j.elements.length) { list = pack(j.elements); break; } }
+    } catch { /* 次を試す */ }
+  }
+  if (!list) {
+    if (cached && Date.now() - cached.t < FK_TTL) return;
+    src = "overpass";
     try {
       // コンビニ・本屋・商業施設（イオンモールなど）・カード／ホビー店
-      const els = await fetchOverpass('[out:json][timeout:90];area["ISO3166-2"="JP-40"]->.a;(nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|collector)$"](area.a);nwr["shop"="supermarket"]["name"~"イオン|AEON"](area.a););out center 12000;');
-      const list = els.map(toPlace).filter((p) => p && FK_COLOR[p.kind])
-        .map(({ id, kind, name, lat, lng, addr, chain }) => ({ id, kind, name, lat, lng, addr, chain }));
-      setFukuoka(list);
-      try { localStorage.setItem(FK_KEY, JSON.stringify({ t: Date.now(), list })); } catch {}
+      list = pack(await fetchOverpass('[out:json][timeout:90];area["ISO3166-2"="JP-40"]->.a;(nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|collector)$"](area.a);nwr["shop"="supermarket"]["name"~"イオン|AEON"](area.a););out center 12000;'));
     } catch {
-      toast("福岡県のお店を読み込めませんでした。あとで開き直してみてね");
+      if (!cached) toast("福岡県のお店を読み込めませんでした。あとで開き直してみてね");
       return;
     }
   }
+  setFukuoka(list);
+  try { localStorage.setItem(FK_KEY, JSON.stringify({ t: Date.now(), src, list })); } catch {}
   renderFukuoka(); renderPlaces();
 }
 function setFukuoka(list) {
@@ -822,8 +833,8 @@ async function main() {
       if (S.me) S.me.setLatLng(ll); else S.me = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1 }).addTo(S.map);
     }, () => toast("現在地を使えませんでした（設定で許可してね）"), { enableHighAccuracy: true, timeout: 10000 });
   };
+  loadFukuoka(); // 待たずに先に読み込む（お店の点はすぐ出す）
   await loadData();
-  loadFukuoka(); // 待たずに後ろで読み込む
   // 画面を開いている間は2分ごとに更新
   setInterval(() => { if (document.visibilityState === "visible" && $("#sheet").hidden) loadData(); }, 120000);
 }
