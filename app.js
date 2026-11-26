@@ -1,4 +1,4 @@
-// ワンピカ在庫マップ（非公式） — 画面の動き
+// ワンピースカード冒険マップ（非公式） — 画面の動き
 // 安全のための決まり：ユーザーが入力した文字は必ず textContent で表示し、HTMLとして扱わない。
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
 
@@ -805,6 +805,25 @@ async function loadData() {
 async function main() {
   initMap();
   initFilters();
+  // 現在地：青い点で表示（ボタンを押したとき＋アプリを開いたとき）
+  const showMe = (p) => {
+    const ll = [p.coords.latitude, p.coords.longitude];
+    if (S.me) S.me.setLatLng(ll); else S.me = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1, interactive: false }).addTo(S.map);
+    return ll;
+  };
+  const locate = (fromStart) => {
+    if (!navigator.geolocation) { if (!fromStart) toast("この端末では現在地が使えません"); return; }
+    navigator.geolocation.getCurrentPosition((p) => {
+      const ll = showMe(p);
+      // 開いた直後にお店などを選んでいたら、勝手に地図を動かさない
+      if (!fromStart || $("#sheet").hidden) S.map.setView(ll, fromStart ? 15 : 14);
+    }, () => toast(fromStart ? "現在地を表示するには、位置情報を許可してね（📍ボタンでもう一度）" : "現在地を使えませんでした（設定で許可してね）"),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  };
+  $("#locateBtn").onclick = () => locate(false);
+  locate(true);
+  // 歩いて動いたら青い点もついてくる（地図は動かさない）
+  if (navigator.geolocation) navigator.geolocation.watchPosition(showMe, () => {}, { enableHighAccuracy: true, maximumAge: 30000 });
   const useFirebase = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
   if (useFirebase) {
     const { createFirebaseBackend } = await import("./backend-firebase.js");
@@ -825,14 +844,6 @@ async function main() {
   $("#feedBtn").onclick = openFeed;
   $("#modeCancel").onclick = () => { S.mode = null; $("#modeBanner").hidden = true; };
   $(".sheet-close").onclick = closeSheet;
-  $("#locateBtn").onclick = () => {
-    if (!navigator.geolocation) return toast("この端末では現在地が使えません");
-    navigator.geolocation.getCurrentPosition((p) => {
-      const ll = [p.coords.latitude, p.coords.longitude];
-      S.map.setView(ll, 14);
-      if (S.me) S.me.setLatLng(ll); else S.me = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1 }).addTo(S.map);
-    }, () => toast("現在地を使えませんでした（設定で許可してね）"), { enableHighAccuracy: true, timeout: 10000 });
-  };
   loadFukuoka(); // 待たずに先に読み込む（お店の点はすぐ出す）
   await loadData();
   // 画面を開いている間は2分ごとに更新
