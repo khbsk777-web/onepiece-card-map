@@ -1,0 +1,41 @@
+name: Firebaseのルールをテストして自動で反映
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "tests/**"
+      - ".github/workflows/deploy-rules.yml"
+concurrency:
+  group: deploy-rules
+  cancel-in-progress: false
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: テスト用の道具を入れる
+        run: npm i --no-save firebase-tools@14 @firebase/rules-unit-testing firebase
+      - name: ルールの自動テスト（失敗したら反映しない）
+        run: npx firebase emulators:exec --only firestore --project demo-op "node tests/rules.test.mjs"
+      - name: Firebaseに反映
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT が未登録なので反映をとばしました（テストは合格）"
+            exit 0
+          fi
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx firebase deploy --only firestore:rules --project onepiece-card-map --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"

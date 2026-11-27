@@ -1,0 +1,37 @@
+name: Xに在庫報告を自動投稿
+on:
+  workflow_dispatch:
+  schedule:
+    # 日本時間 8:41 / 11:41 / 14:41 / 17:41 / 20:41 / 23:41（1日最大6回）
+    - cron: "41 23,2,5,8,11,14 * * *"
+permissions:
+  contents: write
+concurrency:
+  group: x-post
+  cancel-in-progress: false
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 新しい報告をまとめてXに投稿
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          X_INCLUDE_LINK: ${{ vars.X_INCLUDE_LINK }}
+        run: node scripts/x_post.mjs
+      - name: どこまで投稿したかを保存
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/x-state.json 2>/dev/null || exit 0
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Xへの投稿状況を更新"
+          git pull --rebase origin main
+          git push
