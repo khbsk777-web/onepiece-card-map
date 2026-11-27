@@ -42,6 +42,11 @@ await t("正しい報告はOK", assertSucceeds(postReport(alice, report())));
 await t("5秒以内の連投は拒否", assertFails(postReport(alice, report())));
 await t("他人になりすました報告は拒否", assertFails(postReport(verified("alice"), report({ uid: "bob" }))));
 await t("いいね数を最初から盛るのは拒否", assertFails(postReport(alice, report({ likes: 99 }))));
+await t("31文字以上の商品名は拒否", assertFails(postReport(alice, report({ itemName: "あ".repeat(31) }))));
+await t("URL入りの商品名は拒否", assertFails(postReport(alice, report({ itemName: "https://spam" }))));
+await t("決められていない項目は拒否", assertFails(postReport(alice, report({ extra: 1 }))));
+await new Promise((r) => setTimeout(r, 5500));
+await t("商品名つきの報告はOK", assertSucceeds(postReport(alice, report({ itemName: "最強の戦士" }))));
 
 async function vote(db, uid, id, sub, field, to) {
   const b = writeBatch(db);

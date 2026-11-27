@@ -11,6 +11,7 @@ button{cursor:pointer}
 .topbar{position:fixed;top:0;left:0;right:0;height:52px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;background:var(--navy);color:#fff;z-index:1000;padding-top:env(safe-area-inset-top,0)}
 .brand{font-weight:800;font-size:clamp(12px,3.7vw,17px);letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin-right:8px}
 .tag{font-size:10px;font-weight:700;background:var(--gold);color:var(--navy);border-radius:4px;padding:2px 5px;margin-left:6px;vertical-align:middle}
+.sugg-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}.sugg-chips:empty{display:none}.s-chip{border:1px solid #c9d2e3;background:#f4f7fc;color:#14213d;border-radius:999px;padding:6px 12px;font-size:14px;line-height:1.2;cursor:pointer}.s-chip:active{background:#dfe7f5}
 .pill{white-space:nowrap;flex:none;border:0;border-radius:999px;padding:7px 14px;background:#fff;color:var(--navy);font-weight:700;font-size:14px}
 .filters{position:fixed;top:52px;left:0;right:0;display:flex;gap:6px;overflow-x:auto;padding:8px 10px;background:#fff;z-index:999;box-shadow:0 1px 4px rgba(0,0,0,.08);scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}

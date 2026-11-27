@@ -88,7 +88,10 @@ service cloud.firestore {
 
       allow read: if true;
       allow create: if verified()
-        && exactKeys(d(), ['storeId', 'uid', 'nickname', 'product', 'setCode', 'status', 'saleType', 'note', 'likes', 'flags', 'createdAt'])
+        && d().keys().hasAll(['storeId', 'uid', 'nickname', 'product', 'setCode', 'status', 'saleType', 'note', 'likes', 'flags', 'createdAt'])
+        && d().keys().hasOnly(['storeId', 'uid', 'nickname', 'product', 'setCode', 'status', 'saleType', 'note', 'likes', 'flags', 'createdAt', 'itemName'])
+        // 商品名（例：最強の戦士）は任意・30文字まで・URL不可
+        && (!('itemName' in d()) || (str(d().itemName, 1, 30) && safeText(d().itemName)))
         && d().uid == request.auth.uid
         && d().nickname == myNickname()
         && d().storeId is string && exists(/databases/$(database)/documents/stores/$(d().storeId))

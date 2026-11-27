@@ -539,7 +539,7 @@ function reportItem(r) {
   return el("div", { class: "report" },
     el("div", { class: "row" },
       el("div", {}, el("span", { class: `badge ${r.status}`, text: STATUS[r.status] || "?" }), " ",
-        el("b", { text: PRODUCTS[r.product] || "" }), r.setCode ? el("span", { class: "meta", text: ` ${r.setCode}` }) : null),
+        el("b", { text: PRODUCTS[r.product] || "" }), itemLabel(r) ? el("span", { class: "meta", text: ` ${itemLabel(r)}` }) : null),
       el("span", { class: "meta", text: timeAgo(r.createdAt) })),
     el("div", { class: "meta", text: `${SALE[r.saleType] || ""}・${r.nickname || "名無し"}` }),
     r.note ? el("p", { class: "note", text: r.note }) : null,
@@ -653,38 +653,82 @@ function seg(options, initial) {
   }
   return { box, get: () => val };
 }
+// ---------- 商品名の候補（みんなの入力から学習） ----------
+const ITEM_KEY = "opmap-my-items";
+const normItem = (v) => clean(String(v || "").normalize("NFKC").replace(/\s+/g, " "), 30);
+function myItems() { try { return JSON.parse(localStorage.getItem(ITEM_KEY)) || []; } catch { return []; } }
+function rememberItem(name) {
+  if (!name) return;
+  try { localStorage.setItem(ITEM_KEY, JSON.stringify([name, ...myItems().filter((x) => x !== name)].slice(0, 10))); } catch { /* 保存できなくても動かす */ }
+}
+// みんなの報告で多く使われた商品名ほど上に出す（自分が最近入れた名前は少し優先）
+function itemSuggestions(typed) {
+  const score = new Map();
+  for (const r of S.reports) {
+    const n = normItem(r.itemName);
+    if (n) score.set(n, (score.get(n) || 0) + 1);
+  }
+  myItems().forEach((n, i) => score.set(n, (score.get(n) || 0) + 3 - i * 0.2));
+  const q = normItem(typed).toLowerCase();
+  return [...score.entries()]
+    .filter(([n]) => !q || (n.toLowerCase().includes(q) && n.toLowerCase() !== q))
+    .sort((a, b) => b[1] - a[1]).slice(0, 8).map(([n]) => n);
+}
+// カードが置いてある場所のよくある例（タップでメモに入る）
+const PLACE_HINTS = ["レジ横", "レジの後ろの棚", "カード売り場", "店員さんに聞く", "入口の近く", "おもちゃ売り場"];
+const itemLabel = (r) => normItem(r.itemName) || r.setCode || "";
+
 function openReportForm(s, place = null, initStatus = "in") {
   const product = seg(PRODUCTS, "booster");
   const status = seg(STATUS, initStatus);
   const sale = seg(SALE, "pack");
-  const code = el("input", { type: "text", maxLength: 12, placeholder: "例：OP-14（わからなければ空でOK）", autocapitalize: "characters" });
-  const note = el("textarea", { maxLength: 100, placeholder: "例：レジ横に10パックくらい（100文字まで・URL不可）" });
+  const item = el("input", { type: "text", maxLength: 30, placeholder: "例：最強の戦士（わからなければ空でOK）", autocomplete: "off", enterkeyhint: "done" });
+  const itemBox = el("div", { class: "sugg-chips" });
+  const drawItems = () => {
+    itemBox.replaceChildren(...itemSuggestions(item.value).map((n) =>
+      el("button", { type: "button", class: "s-chip", text: n, onclick: () => { item.value = n; drawItems(); } })));
+  };
+  item.oninput = drawItems; drawItems();
+  const note = el("textarea", { maxLength: 100, placeholder: "例：レジ横の棚に10パックくらい（100文字まで・URL不可）" });
+  const placeBox = el("div", { class: "sugg-chips" }, ...PLACE_HINTS.map((h) =>
+    el("button", { type: "button", class: "s-chip", text: h, onclick: () => {
+      const cur = note.value.trim();
+      if (!cur.includes(h)) note.value = (cur ? cur + "・" : "") + h;
+    } })));
   const send = el("button", { class: "btn", type: "button", text: "報告する" });
   // 未登録のお店：都道府県がわからないときだけ選んでもらう
   const prefLabel = el("label", { text: "都道府県", hidden: true });
   const prefSel = el("select", { hidden: true }, el("option", { value: "", text: "都道府県を選ぶ" }), ...PREFS.map((x) => el("option", { value: x, text: x })));
   if (place) placeGeo(place).then((g) => { if (!g.pref) { prefLabel.hidden = false; prefSel.hidden = false; } });
   send.onclick = busy(send, async () => {
-    const setCode = clean(code.value, 12).toUpperCase();
+    const itemName = normItem(item.value);
     const n = clean(note.value, 100);
-    if (setCode && !/^[A-Z0-9-]{1,12}$/.test(setCode)) return toast("弾の番号は英数字とハイフンだけで入れてね");
-    if (URL_RE.test(n) || /[<>]/.test(n)) return toast("メモにURLや < > は書けません");
+    if (URL_RE.test(itemName + n) || /[<>]/.test(itemName + n)) return toast("商品名やメモにURLや < > は書けません");
     if (!(await nearCheck(place || s))) return;
     if (place) {
       const st = await storeForPlace(place, prefSel.value);
       if (!st) { prefLabel.hidden = false; prefSel.hidden = false; return toast("都道府県を選んでね"); }
       s = st;
     }
-    const rep = await S.backend.addReport({ storeId: s.id, product: product.get(), setCode, status: status.get(), saleType: sale.get(), note: n });
+    const base = { storeId: s.id, product: product.get(), setCode: "", status: status.get(), saleType: sale.get(), note: n };
+    let rep;
+    try {
+      rep = await S.backend.addReport(itemName ? { ...base, itemName } : base);
+    } catch (e) {
+      // サーバーのルールがまだ古いとき：商品名をメモの先頭に入れて送り直す
+      if (!itemName || e?.code !== "permission-denied") throw e;
+      rep = await S.backend.addReport({ ...base, note: clean(`【${itemName}】${n}`, 100) });
+    }
+    rememberItem(itemName);
     S.reports.unshift(rep); render(); toast("報告ありがとう！ +10pt"); openStore(s.id);
   });
   openSheet(el("h2", { text: "在庫を報告" }), el("p", { class: "sub", text: s.name }),
     prefLabel, prefSel,
     el("label", { text: "商品" }), product.box,
-    el("label", { text: "弾の番号（任意）" }), code,
+    el("label", { text: "商品名（任意）" }), item, itemBox,
     el("label", { text: "いまの状態" }), status.box,
     el("label", { text: "売り方" }), sale.box,
-    el("label", { text: "ひとことメモ（任意）" }), note,
+    el("label", { text: "カードが置いてある場所（メモ・任意）" }), placeBox, note,
     el("div", { class: "warn", text: "見たままの情報だけ書いてね。ウソの情報・転売の呼びかけ・個人情報は禁止です。" }),
     send);
 }
@@ -775,7 +819,7 @@ function openFeed() {
       const s = S.stores.find((x) => x.id === r.storeId);
       return el("div", { class: "feed-item", role: "button", tabindex: "0", onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } },
         el("div", { class: "row", style: "display:flex;justify-content:space-between" }, el("b", { text: s.name }), el("span", { class: "meta", text: timeAgo(r.createdAt) })),
-        el("div", {}, el("span", { class: `badge ${r.status}`, text: STATUS[r.status] }), " ", PRODUCTS[r.product] || "", r.setCode ? ` ${r.setCode}` : ""));
+        el("div", {}, el("span", { class: `badge ${r.status}`, text: STATUS[r.status] }), " ", PRODUCTS[r.product] || "", itemLabel(r) ? ` ${itemLabel(r)}` : ""));
     }) : [el("p", { class: "small", text: "まだ報告がありません" })]));
 }
 
