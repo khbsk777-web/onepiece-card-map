@@ -137,7 +137,7 @@ function initMap() {
   S.layer = L.layerGroup().addTo(S.map);
   S.map.attributionControl.addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>');
   S.map.on("click", (e) => { if (S.mode === "pick") pickPoint(e.latlng); });
-  S.map.on("zoomend", renderFukuoka);
+  S.map.on("moveend", () => { renderFukuoka(); clearTimeout(prefTimer); prefTimer = setTimeout(loadPrefData, 400); });
   S.map.on("moveend", () => { renderPlaces(); clearTimeout(placeTimer); placeTimer = setTimeout(loadPlaces, 500); });
 }
 function render() {
@@ -272,7 +272,7 @@ function renderPlaces() {
 // ---------- 福岡県のコンビニを全部「⚫」で表示 ----------
 // 引いた地図でも県内の未登録コンビニが全部見える。拡大するとチェーン名の札に切り替わる
 // 引いた地図での点の色（種類ごと）
-const FK_COLOR = { conv: "#111111", books: "#0d9488", mall: "#7c3aed", hobby: "#db2777" };
+const FK_COLOR = { conv: "#111111", books: "#0d9488", mall: "#7c3aed", hobby: "#db2777", elec: "#ea580c" };
 const FK_KEY = "opmap-fukuoka-v3";
 const FK_TTL = 24 * 3600e3; // 1日覚えておく
 let fkPlaces = [];
@@ -311,14 +311,52 @@ function setFukuoka(list) {
   fkPlaces = list.map((p) => ({ ...p, tagPref: "福岡県" }));
   for (const p of fkPlaces) if (!placeById.has(p.id)) placeById.set(p.id, p);
 }
+// ---------- 全国のコンビニ・ヨドバシ（県ごとのファイルを、地図に映った県だけ読む） ----------
+const PREF_MIN_ZOOM = 8;   // これより引いた地図では全国の点は出さない（重くなるため）
+let prefIndex = null, prefTimer;
+const prefLists = new Map(), prefLoading = new Set();
+async function loadPrefIndex() {
+  if (prefIndex) return prefIndex;
+  try {
+    const res = await fetch("data/pref/index.json", { cache: "no-cache" });
+    if (res.ok) prefIndex = (await res.json()).prefs || {};
+  } catch { /* まだデータがない */ }
+  return prefIndex;
+}
+async function loadPrefData() {
+  if (S.placesMode === "off" || S.map.getZoom() < PREF_MIN_ZOOM) return;
+  const idx = await loadPrefIndex();
+  if (!idx) return;
+  const b = S.map.getBounds();
+  const want = Object.entries(idx).filter(([code, v]) => code !== "JP-40" && v.bbox &&
+    !(v.bbox[0] > b.getNorth() || v.bbox[2] < b.getSouth() || v.bbox[1] > b.getEast() || v.bbox[3] < b.getWest()))
+    .map(([code, v]) => [code, v.name]).filter(([code]) => !prefLists.has(code) && !prefLoading.has(code)).slice(0, 6);
+  await Promise.all(want.map(async ([code, name]) => {
+    prefLoading.add(code);
+    try {
+      const res = await fetch(`data/pref/${code}.json`);
+      if (!res.ok) return;
+      const j = await res.json();
+      const list = (j.elements || []).map(toPlace).filter((p) => p && FK_COLOR[p.kind])
+        .map((p) => ({ ...p, tagPref: p.tagPref || name }));
+      prefLists.set(code, list);
+      for (const p of list) if (!placeById.has(p.id)) placeById.set(p.id, p);
+    } catch { /* 読めなかった県はあとでもう一度 */ } finally { prefLoading.delete(code); }
+  }));
+  if (want.length) { renderFukuoka(); renderPlaces(); }
+}
+function* dotPlaces() {
+  yield* fkPlaces;
+  if (S.map.getZoom() >= PREF_MIN_ZOOM) for (const list of prefLists.values()) yield* list;
+}
 function renderFukuoka() {
   if (!S.fk) return;
   S.fk.clearLayers();
   const z = S.map.getZoom();
-  if (S.placesMode === "off" || z >= PLACE_MIN_ZOOM || !fkPlaces.length) return;
+  if (S.placesMode === "off" || z >= PLACE_MIN_ZOOM) return;
   const r = z < 9 ? 2.5 : z < 11 ? 3.5 : 5;
   const b = S.map.getBounds().pad(0.1);
-  for (const p of fkPlaces) {
+  for (const p of dotPlaces()) {
     if (S.placesMode === "conv" && p.kind !== "conv") continue;
     if (!b.contains([p.lat, p.lng]) || isRegistered(p)) continue;
     L.circleMarker([p.lat, p.lng], { renderer: S.canvas, radius: r, weight: 1, color: "#fff", fillColor: FK_COLOR[p.kind] || "#111", fillOpacity: 0.9 })
@@ -495,6 +533,19 @@ function updateAccountBtn() {
 }
 
 // ---------- お店のパネル ----------
+// ---------- Xでシェア ----------
+const APP_URL = "https://khbsk777-web.github.io/onepiece-card-map/";
+const TAGS = "#ワンピースカード #ワンピカ #トレジャーカードマップ";
+function xShareBtn(text, url) {
+  const href = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+  return el("a", { class: "btn x-share", href, target: "_blank", rel: "noopener noreferrer", text: "𝕏 でシェア" });
+}
+function storeShareText(s, reps) {
+  const r = [...reps].sort((a, b) => b.createdAt - a.createdAt)[0];
+  const st = r ? `${STATUS[r.status] || ""}${itemLabel(r) ? `（${itemLabel(r)}）` : ""}・${timeAgo(r.createdAt)}` : "まだ報告なし";
+  return `【${s.name}】ワンピースカードの在庫：${st}\nみんなで在庫を報告し合う地図はこちら👇\n${TAGS}`;
+}
+
 async function openStore(id) {
   const s = S.stores.find((x) => x.id === id);
   if (!s) return;
@@ -505,7 +556,7 @@ async function openStore(id) {
   const gmap = el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" });
   const listBox = el("div");
   const ch = chainOf(s.name);
-  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), reportBtn, photoSection(s, async () => s), listBox, gmap);
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), `${APP_URL}?s=${encodeURIComponent(s.id)}`));
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged] = await Promise.all([S.backend.myVotes(ids, "like"), S.backend.myVotes(ids, "flag")]); } catch {}
   }
@@ -820,7 +871,8 @@ function openFeed() {
       return el("div", { class: "feed-item", role: "button", tabindex: "0", onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } },
         el("div", { class: "row", style: "display:flex;justify-content:space-between" }, el("b", { text: s.name }), el("span", { class: "meta", text: timeAgo(r.createdAt) })),
         el("div", {}, el("span", { class: `badge ${r.status}`, text: STATUS[r.status] }), " ", PRODUCTS[r.product] || "", itemLabel(r) ? ` ${itemLabel(r)}` : ""));
-    }) : [el("p", { class: "small", text: "まだ報告がありません" })]));
+    }) : [el("p", { class: "small", text: "まだ報告がありません" })]),
+    xShareBtn(`ワンピースカードの在庫を、みんなで報告し合う地図アプリ「トレジャーカードマップ」（非公式）を使ってみてね🗺\n${TAGS}`, APP_URL));
 }
 
 // ---------- 絞り込み ----------
@@ -843,8 +895,8 @@ function initFilters() {
   pm.onchange = () => {
     S.placesMode = pm.value;
     try { localStorage.setItem("opmap-places-mode", S.placesMode); } catch {}
-    renderPlaces(); loadPlaces(); renderFukuoka();
-    if (S.placesMode !== "off" && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます（福岡県のお店は点で表示中）");
+    renderPlaces(); loadPlaces(); renderFukuoka(); loadPrefData();
+    if (S.placesMode !== "off" && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます（コンビニ・ヨドバシは点で表示中）");
   };
   const pf = $("#productFilter");
   pf.replaceChildren(el("option", { value: "", text: "全商品" }), ...Object.entries(PRODUCTS).map(([k, v]) => el("option", { value: k, text: v })));
@@ -875,6 +927,8 @@ async function main() {
   const showMe = (p) => {
     const ll = [p.coords.latitude, p.coords.longitude];
     S.myPos = { lat: ll[0], lng: ll[1], t: Date.now() };
+    // 緑の円：ここから3km以内のお店なら投稿・報告できる
+    if (S.range) S.range.setLatLng(ll); else S.range = L.circle(ll, { radius: POST_RANGE_M, color: "#16a34a", weight: 2, opacity: 0.8, dashArray: "6 6", fillColor: "#22c55e", fillOpacity: 0.08, interactive: false }).addTo(S.map);
     if (S.me) S.me.setLatLng(ll); else S.me = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1, interactive: false }).addTo(S.map);
     return ll;
   };
@@ -912,7 +966,14 @@ async function main() {
   $("#modeCancel").onclick = () => { S.mode = null; $("#modeBanner").hidden = true; };
   $(".sheet-close").onclick = closeSheet;
   loadFukuoka(); // 待たずに先に読み込む（お店の点はすぐ出す）
+  loadPrefData();
   await loadData();
+  // シェアされたリンク（?s=お店ID）から開いたら、そのお店を表示
+  try {
+    const sid = new URLSearchParams(location.search).get("s");
+    const st = sid && /^[A-Za-z0-9_-]{1,64}$/.test(sid) && S.stores.find((x) => x.id === sid);
+    if (st) { S.map.setView([st.lat, st.lng], 16); openStore(st.id); }
+  } catch { /* 読めないリンクは無視 */ }
   // 画面を開いている間は2分ごとに更新
   setInterval(() => { if (document.visibilityState === "visible" && $("#sheet").hidden) loadData(); }, 120000);
 }

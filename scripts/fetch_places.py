@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 SERVERS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
 QUERY = ('[out:json][timeout:180];area["ISO3166-2"="JP-40"]->.a;('
          'nwr["shop"~"^(convenience|books|mall|department_store|toys|games|hobby|anime|collector)$"](area.a);'
-         'nwr["shop"="supermarket"]["name"~"イオン|AEON"](area.a););out center 20000;')
+         'nwr["shop"="supermarket"]["name"~"イオン|AEON"](area.a);'
+         'nwr["shop"="electronics"]["name"~"ヨドバシ|Yodobashi",i](area.a););out center 20000;')
 KEEP = ["shop", "name", "name:ja", "name:en", "brand", "brand:ja", "brand:en", "branch", "branch:ja",
         "addr:full", "addr:province", "addr:city", "addr:suburb", "addr:quarter", "addr:neighbourhood",
         "addr:block_number", "addr:housenumber"]
