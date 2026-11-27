@@ -1,40 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <radialGradient id="sea" cx="50%" cy="40%" r="75%">
-      <stop offset="0" stop-color="#1f3a6b"/><stop offset="1" stop-color="#0e1a33"/>
-    </radialGradient>
-    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f7e7bf"/><stop offset="1" stop-color="#e3c68a"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" fill="url(#sea)"/>
-  <!-- うっすら波 -->
-  <g fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="6" stroke-linecap="round">
-    <path d="M30 70q25-18 50 0t50 0"/><path d="M380 455q25-18 50 0t50 0"/><path d="M20 440q25-18 50 0"/>
-  </g>
-  <!-- カードの形をした宝の地図 -->
-  <g transform="rotate(-8 256 262)">
-    <rect x="118" y="92" width="276" height="340" rx="26" fill="#000" opacity=".35" transform="translate(8 12)"/>
-    <rect x="118" y="92" width="276" height="340" rx="26" fill="url(#paper)" stroke="#b8893f" stroke-width="6"/>
-    <rect x="138" y="112" width="236" height="300" rx="16" fill="none" stroke="#b8893f" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
-    <!-- 島 -->
-    <path d="M170 300c-8-40 30-62 58-52 18-30 70-30 82 4 34-6 52 30 34 56-10 30-52 34-74 22-24 22-74 18-88-6-14-2-14-14-12-24z" fill="#9dbf6a" stroke="#6b8a3c" stroke-width="5"/>
-    <!-- 山 -->
-    <path d="M226 292l22-36 22 36z" fill="#7a9a4a" stroke="#56702e" stroke-width="4" stroke-linejoin="round"/>
-    <!-- 点線の道 -->
-    <path d="M168 170c40 10 40 50 80 52s52-34 92-12" fill="none" stroke="#c0392b" stroke-width="7" stroke-dasharray="4 14" stroke-linecap="round"/>
-    <!-- X 印 -->
-    <g stroke="#c0392b" stroke-width="14" stroke-linecap="round"><path d="M324 186l32 32M356 186l-32 32"/></g>
-    <!-- スタート地点 -->
-    <circle cx="164" cy="168" r="9" fill="#c0392b"/>
-  </g>
-  <!-- 方位磁針 -->
-  <g transform="translate(372 368)">
-    <circle r="66" fill="#14213d" stroke="#f2c14e" stroke-width="7"/>
-    <circle r="50" fill="none" stroke="#f2c14e" stroke-opacity=".5" stroke-width="2"/>
-    <path d="M0-52 12 0 0 52-12 0z" fill="#f2c14e"/>
-    <path d="M0-52 12 0H-12z" fill="#e4572e"/>
-    <path d="M-52 0 0-9 52 0 0 9z" fill="#f2c14e" opacity=".7"/>
-    <circle r="7" fill="#14213d" stroke="#f2c14e" stroke-width="3"/>
+  <defs><radialGradient id="p" cx="50%" cy="45%" r="70%"><stop offset="0" stop-color="#f8e9c4"/><stop offset=".75" stop-color="#e8cc8e"/><stop offset="1" stop-color="#b98a45"/></radialGradient></defs>
+  <rect width="512" height="512" fill="url(#p)"/>
+  <g fill="none" stroke="#a37a3c" stroke-opacity=".35" stroke-width="3"><path d="M0 128H512M0 256H512M0 384H512M128 0V512M256 0V512M384 0V512"/></g>
+  <path d="M60 400c-6-36 26-58 52-48 16-28 64-26 74 4 30-6 46 26 30 50-10 26-48 30-68 18-22 20-68 16-80-6-10-2-10-12-8-18z" fill="#9dbf6a" stroke="#6b8a3c" stroke-width="5"/>
+  <path d="M108 390c40-90 150-60 200-150s110-80 120-110" fill="none" stroke="#c0392b" stroke-width="9" stroke-dasharray="5 18" stroke-linecap="round"/>
+  <g stroke="#c0392b" stroke-width="18" stroke-linecap="round"><path d="M392 92l44 44M436 92l-44 44"/></g>
+  <g transform="translate(256 256)">
+    <circle r="112" fill="#fff8e6" fill-opacity=".55" stroke="#14213d" stroke-width="6"/>
+    <path d="M0-104 22-22 104 0 22 22 0 104-22 22-104 0-22-22z" fill="#14213d"/>
+    <path d="M0-104 22-22 0 0zM104 0 22 22 0 0zM0 104-22 22 0 0zM-104 0-22-22 0 0z" fill="#3d5a99"/>
+    <path d="M0-104 22-22H-22z" fill="#c0392b"/>
+    <path d="M-60-60 0-14 60-60 14 0 60 60 0 14-60 60-14 0z" fill="#14213d" opacity=".45"/>
+    <circle r="12" fill="#f2c14e" stroke="#14213d" stroke-width="4"/>
+    <text y="-122" font-family="Georgia,serif" font-weight="700" font-size="34" text-anchor="middle" fill="#14213d">N</text>
   </g>
 </svg>
