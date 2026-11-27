@@ -57,19 +57,19 @@ export function createDemoBackend() {
       return wait(d.reports.filter((r) => r.createdAt >= since).sort((a, b) => b.createdAt - a.createdAt));
     },
     async addStore(s) {
-      if (Date.now() - d.lastStore < 30000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
+      if (Date.now() - d.lastStore < 5000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
       const st = { id: id(), ...s, createdBy: "me", createdAt: Date.now() };
       d.stores.push(st); d.lastStore = Date.now(); save(); return st;
     },
     async ensureStore(sid, s) {
       const ex = d.stores.find((x) => x.id === sid);
       if (ex) return ex;
-      if (Date.now() - d.lastStore < 30000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
+      if (Date.now() - d.lastStore < 5000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
       const st = { id: sid, ...s, createdBy: "me", createdAt: Date.now() };
       d.stores.push(st); d.lastStore = Date.now(); save(); return st;
     },
     async addReport(r) {
-      if (Date.now() - d.lastReport < 30000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
+      if (Date.now() - d.lastReport < 5000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
       const rep = { id: id(), ...r, uid: "me", nickname: d.user.nickname, likes: 0, flags: 0, createdAt: Date.now() };
       d.reports.push(rep); d.lastReport = Date.now(); save(); return rep;
     },

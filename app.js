@@ -45,6 +45,25 @@ function distM(a, b) {
   const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(x));
 }
+// 投稿できるのは「いる場所から3km以内」のお店だけ（遠くからのウソ報告を防ぐ）
+const POST_RANGE_M = 3000;
+function getPos() {
+  if (S.myPos && Date.now() - S.myPos.t < 60000) return Promise.resolve(S.myPos);
+  return new Promise((ok, ng) => {
+    if (!navigator.geolocation) return ng(new Error("no-geo"));
+    navigator.geolocation.getCurrentPosition((p) => {
+      S.myPos = { lat: p.coords.latitude, lng: p.coords.longitude, t: Date.now() };
+      ok(S.myPos);
+    }, ng, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+  });
+}
+async function nearCheck(pt) {
+  let me;
+  try { me = await getPos(); } catch { toast("投稿するには位置情報の許可が必要です（設定で許可してね）"); return false; }
+  const d = distM(me, pt);
+  if (d > POST_RANGE_M) { toast(`このお店から${(d / 1000).toFixed(1)}km離れています。投稿は現在地から3km以内のお店だけです`); return false; }
+  return true;
+}
 let toastTimer;
 function toast(msg) {
   const t = $("#toast");
@@ -54,7 +73,7 @@ function toast(msg) {
 function errMsg(e) {
   const c = e?.code || e?.message || "";
   const map = {
-    "permission-denied": "連続で投稿できません（報告は30秒・写真は1分に1回まで）。少し待ってからもう一度ためしてね",
+    "permission-denied": "連続で投稿できません（報告・お店の登録は5秒・写真は1分に1回まで）。少し待ってからもう一度ためしてね",
     "auth/email-already-in-use": "このメールアドレスはもう登録されています。ログインしてね",
     "auth/invalid-credential": "メールアドレスかパスワードがちがいます",
     "auth/wrong-password": "メールアドレスかパスワードがちがいます",
@@ -365,7 +384,7 @@ function openPlace(p) {
       if (!st) throw new Error("no-pref");
       render();
       return st;
-    }),
+    }, p),
     el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" }),
     el("p", { class: "small", text: "お店の情報：© OpenStreetMap contributors" }),
   );
@@ -550,7 +569,7 @@ export function encodeImage(img, max, limit) {
   }
   throw new Error("too-big");
 }
-function photoSection(store, getStore) {
+function photoSection(store, getStore, where = store) {
   const grid = el("div", { class: "photo-grid" });
   const input = el("input", { type: "file", accept: "image/*", hidden: true });
   const add = el("button", { class: "btn sec", type: "button", text: "📷 写真を投稿する" });
@@ -560,6 +579,7 @@ function photoSection(store, getStore) {
     input.value = "";
     if (!file) return;
     if (!/^image\//.test(file.type) || file.size > 25 * 1024 * 1024) return toast("写真のファイルを選んでね（25MBまで）");
+    if (where && !(await nearCheck(where))) return;
     add.textContent = "⏳ 写真を小さくしています…";
     try {
       const img = await loadImage(file);
@@ -649,6 +669,7 @@ function openReportForm(s, place = null, initStatus = "in") {
     const n = clean(note.value, 100);
     if (setCode && !/^[A-Z0-9-]{1,12}$/.test(setCode)) return toast("弾の番号は英数字とハイフンだけで入れてね");
     if (URL_RE.test(n) || /[<>]/.test(n)) return toast("メモにURLや < > は書けません");
+    if (!(await nearCheck(place || s))) return;
     if (place) {
       const st = await storeForPlace(place, prefSel.value);
       if (!st) { prefLabel.hidden = false; prefSel.hidden = false; return toast("都道府県を選んでね"); }
@@ -727,6 +748,7 @@ function storeForm(pt, place) {
     if (!n) return toast("お店の名前を入れてね");
     if (!pref.value) return toast("都道府県を選んでね");
     if (URL_RE.test(n + a) || /[<>]/.test(n + a)) return toast("URLや < > は入れられません");
+    if (!(await nearCheck(pt))) return;
     const st = await S.backend.addStore({ name: n, lat: +pt.lat.toFixed(6), lng: +pt.lng.toFixed(6), address: a, pref: pref.value });
     S.stores.push(st); addPrefOption(st.pref); render();
     S.map.setView([st.lat, st.lng], Math.max(S.map.getZoom(), 16));
@@ -808,6 +830,7 @@ async function main() {
   // 現在地：青い点で表示（ボタンを押したとき＋アプリを開いたとき）
   const showMe = (p) => {
     const ll = [p.coords.latitude, p.coords.longitude];
+    S.myPos = { lat: ll[0], lng: ll[1], t: Date.now() };
     if (S.me) S.me.setLatLng(ll); else S.me = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1, interactive: false }).addTo(S.map);
     return ll;
   };

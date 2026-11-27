@@ -41,7 +41,7 @@ service cloud.firestore {
     }
 
     // ---------- 連投制限 ----------
-    // 報告とお店の登録は30秒に1回、写真は1分に1回まで
+    // 報告とお店の登録は5秒に1回（ボタン連打・荒らし対策）、写真は1分に1回まで
     match /rateLimits/{uid} {
       function cooled(field, sec) {
         return resource == null || !(field in resource.data)
@@ -54,7 +54,7 @@ service cloud.firestore {
       allow read: if isMe(uid);
       allow create, update: if verified() && isMe(uid)
         && request.resource.data.keys().hasOnly(['lastReport', 'lastStore', 'lastPhoto'])
-        && stampOk('lastReport', 30) && stampOk('lastStore', 30) && stampOk('lastPhoto', 60);
+        && stampOk('lastReport', 5) && stampOk('lastStore', 5) && stampOk('lastPhoto', 60);
       allow delete: if false;
     }
 

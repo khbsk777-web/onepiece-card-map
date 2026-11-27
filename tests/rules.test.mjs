@@ -39,7 +39,7 @@ async function postReport(db, data) {
 }
 await t("連投制限の時刻なしの報告は拒否", assertFails(setDoc(doc(alice, "reports/x1"), report())));
 await t("正しい報告はOK", assertSucceeds(postReport(alice, report())));
-await t("30秒以内の連投は拒否", assertFails(postReport(alice, report())));
+await t("5秒以内の連投は拒否", assertFails(postReport(alice, report())));
 await t("他人になりすました報告は拒否", assertFails(postReport(verified("alice"), report({ uid: "bob" }))));
 await t("いいね数を最初から盛るのは拒否", assertFails(postReport(alice, report({ likes: 99 }))));
 
