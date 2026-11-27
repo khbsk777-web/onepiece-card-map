@@ -173,6 +173,21 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
       const res = await Promise.all(ids.map((id) => F.getDoc(F.doc(db, "reports", id, sub, uid)).then((s) => (s.exists() ? id : null)).catch(() => null)));
       return new Set(res.filter(Boolean));
     },
+    // アカウント削除：自分の報告・写真・ニックネームを消してから、ログイン情報を消す
+    async deleteAccount() {
+      const u = auth.currentUser;
+      const last = Date.parse(u?.metadata?.lastSignInTime || 0);
+      if (!u || Date.now() - last > 5 * 60 * 1000) throw { code: "auth/requires-recent-login" };
+      for (const col of ["photos", "reports"]) {
+        const snap = await F.getDocs(F.query(F.collection(db, col), F.where("uid", "==", u.uid)));
+        for (const d of snap.docs) {
+          if (col === "photos") await this.deletePhoto(d.id); else await F.deleteDoc(d.ref);
+        }
+      }
+      await F.deleteDoc(F.doc(db, "users", u.uid));
+      profile = null;
+      await A.deleteUser(u);
+    },
     async myStats() {
       const q = F.query(F.collection(db, "reports"), F.where("uid", "==", auth.currentUser.uid));
       const agg = await F.getAggregateFromServer(q, { n: F.count(), likes: F.sum("likes") });

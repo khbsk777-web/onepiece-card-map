@@ -68,6 +68,8 @@ await t("海外座標のお店は拒否", assertFails((async () => {
   b.set(doc(collection(alice, "stores")), { name: "店", lat: 40.7, lng: -74, address: "", pref: "東京都", createdBy: "alice", createdAt: serverTimestamp() });
   return b.commit();
 })()));
+await t("他人のニックネームは削除できない", assertFails(deleteDoc(doc(verified("bob"), "users/alice"))));
+await t("自分のニックネームは削除できる（アカウント削除）", assertSucceeds(deleteDoc(doc(alice, "users/alice"))));
 await t("想定外の場所は読めない", assertFails(getDoc(doc(guest, "admin/secret"))));
 
 for (const r of results) console.log(r.join(" "));

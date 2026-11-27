@@ -49,6 +49,7 @@
 - `app.js` … 画面の動き
 - `backend-firebase.js` … 本番（Firebase）とのやりとり
 - `backend-demo.js` … デモモード
+- `about.html` … このアプリについて・プライバシーポリシー・利用規約・セキュリティ対策・FAQ
 - `firestore.rules` … セキュリティルール（いちばん大事）
 - `tests/rules.test.mjs` … ルールの自動テスト（Firebaseエミュレーターで実行）
 - `vendor/leaflet/` … 地図ライブラリ（外部CDNを使わず同梱）

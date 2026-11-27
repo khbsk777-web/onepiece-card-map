@@ -37,7 +37,8 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname'])
         && str(request.resource.data.nickname, 1, 20) && safeText(request.resource.data.nickname)
         && !request.resource.data.nickname.matches('.*@.*');
-      allow delete: if false;
+      // アカウント削除のときだけ、自分のニックネームを消せる
+      allow delete: if isMe(uid);
     }
 
     // ---------- 連投制限 ----------

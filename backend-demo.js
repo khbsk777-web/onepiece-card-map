@@ -100,6 +100,10 @@ export function createDemoBackend() {
       const box = kind === "like" ? d.likes : d.flags;
       return new Set(ids.filter((i) => box[i]));
     },
+    async deleteAccount() {
+      d.reports = d.reports.filter((x) => x.uid !== "me");
+      d.user = null; save(); cb(null);
+    },
     async myStats() {
       const mine = d.reports.filter((r) => r.uid === "me");
       return { reports: mine.length, likes: mine.reduce((a, r) => a + r.likes, 0) };

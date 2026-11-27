@@ -479,7 +479,8 @@ function openLogin() {
     el("label", { text: "メールアドレス" }), email,
     el("label", { text: "パスワード" }), pw,
     login, signup, forgot,
-    el("p", { class: "small", text: "公開されるのはニックネームだけです。メールアドレスは他の人に見えません。" }),
+    el("p", { class: "small", text: "公開されるのはニックネームだけです。メールアドレスは他の人に見えません。ログインすると、利用規約とプライバシーポリシーに同意したことになります。" }),
+    aboutLink("📄 利用規約・プライバシーポリシーを読む"),
   );
 }
 function openVerify() {
@@ -499,7 +500,7 @@ function openVerify() {
     done, again, out);
 }
 function openNickname(after) {
-  const input = el("input", { type: "text", maxLength: 20, placeholder: "例：麦わらハンター", value: S.user?.nickname || "" });
+  const input = el("input", { type: "text", maxLength: 20, placeholder: "例：お宝ハンター", value: S.user?.nickname || "" });
   const save = el("button", { class: "btn", type: "button", text: "決定" });
   save.onclick = busy(save, async () => {
     const n = clean(input.value, 20);
@@ -518,14 +519,43 @@ async function openAccount() {
   const stat = el("div", { class: "stat" }, el("div", {}, el("b", { text: "…" }), "報告"), el("div", {}, el("b", { text: "…" }), "もらった👍"), el("div", {}, el("b", { text: "…" }), "ポイント"));
   const nick = el("button", { class: "btn ghost", type: "button", text: "ニックネームを変える" });
   const out = el("button", { class: "btn ghost", type: "button", text: "ログアウト" });
+  const del = el("button", { class: "btn ghost danger", type: "button", text: "アカウントを削除" });
   nick.onclick = () => openNickname(openAccount);
   out.onclick = busy(out, async () => { await S.backend.signOut(); closeSheet(); toast("ログアウトしました"); });
-  openSheet(el("h2", { text: S.user.nickname }), el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt" }), stat, nick, out);
+  del.onclick = openDeleteAccount;
+  openSheet(el("h2", { text: S.user.nickname }), el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt" }), stat, nick, out,
+    aboutLink(), del);
   try {
     const st = await S.backend.myStats();
     const b = stat.querySelectorAll("b");
     b[0].textContent = st.reports; b[1].textContent = st.likes; b[2].textContent = st.reports * 10 + st.likes * 5;
   } catch (e) { console.warn(e); }
+}
+function aboutLink(text = "ℹ️ このアプリについて・プライバシー・規約") {
+  return el("a", { class: "btn ghost", href: "about.html", text });
+}
+function openDeleteAccount() {
+  const yes = el("button", { class: "btn danger", type: "button", text: "削除する（元に戻せません）" });
+  const no = el("button", { class: "btn ghost", type: "button", text: "やめる" });
+  no.onclick = openAccount;
+  yes.onclick = busy(yes, async () => {
+    const myUid = S.user?.uid || "me";
+    try {
+      await S.backend.deleteAccount();
+    } catch (e) {
+      if (e?.code === "auth/requires-recent-login") {
+        toast("安全のため、いったんログアウトして、もう一度ログインしてから削除してね");
+        return;
+      }
+      throw e;
+    }
+    S.user = null; S.reports = S.reports.filter((r) => r.uid !== myUid);
+    updateAccountBtn(); closeSheet(); toast("アカウントを削除しました。ご利用ありがとうございました");
+    loadData();
+  });
+  openSheet(el("h2", { text: "アカウントを削除しますか？" }),
+    el("p", { class: "sub", text: "メールアドレス・ニックネーム・あなたの報告・あなたの写真がすべて消えます。👍や通報の「押した印」は不正防止のため残ります。" }),
+    yes, no);
 }
 function updateAccountBtn() {
   const b = $("#accountBtn");
