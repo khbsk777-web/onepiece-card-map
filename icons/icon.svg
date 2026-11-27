@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="sea" cx="50%" cy="40%" r="75%">
+      <stop offset="0" stop-color="#1f3a6b"/><stop offset="1" stop-color="#0e1a33"/>
+    </radialGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7e7bf"/><stop offset="1" stop-color="#e3c68a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#sea)"/>
+  <!-- うっすら波 -->
+  <g fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="6" stroke-linecap="round">
+    <path d="M30 70q25-18 50 0t50 0"/><path d="M380 455q25-18 50 0t50 0"/><path d="M20 440q25-18 50 0"/>
+  </g>
+  <!-- カードの形をした宝の地図 -->
+  <g transform="rotate(-8 256 262)">
+    <rect x="118" y="92" width="276" height="340" rx="26" fill="#000" opacity=".35" transform="translate(8 12)"/>
+    <rect x="118" y="92" width="276" height="340" rx="26" fill="url(#paper)" stroke="#b8893f" stroke-width="6"/>
+    <rect x="138" y="112" width="236" height="300" rx="16" fill="none" stroke="#b8893f" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+    <!-- 島 -->
+    <path d="M170 300c-8-40 30-62 58-52 18-30 70-30 82 4 34-6 52 30 34 56-10 30-52 34-74 22-24 22-74 18-88-6-14-2-14-14-12-24z" fill="#9dbf6a" stroke="#6b8a3c" stroke-width="5"/>
+    <!-- 山 -->
+    <path d="M226 292l22-36 22 36z" fill="#7a9a4a" stroke="#56702e" stroke-width="4" stroke-linejoin="round"/>
+    <!-- 点線の道 -->
+    <path d="M168 170c40 10 40 50 80 52s52-34 92-12" fill="none" stroke="#c0392b" stroke-width="7" stroke-dasharray="4 14" stroke-linecap="round"/>
+    <!-- X 印 -->
+    <g stroke="#c0392b" stroke-width="14" stroke-linecap="round"><path d="M324 186l32 32M356 186l-32 32"/></g>
+    <!-- スタート地点 -->
+    <circle cx="164" cy="168" r="9" fill="#c0392b"/>
+  </g>
+  <!-- 方位磁針 -->
+  <g transform="translate(372 368)">
+    <circle r="66" fill="#14213d" stroke="#f2c14e" stroke-width="7"/>
+    <circle r="50" fill="none" stroke="#f2c14e" stroke-opacity=".5" stroke-width="2"/>
+    <path d="M0-52 12 0 0 52-12 0z" fill="#f2c14e"/>
+    <path d="M0-52 12 0H-12z" fill="#e4572e"/>
+    <path d="M-52 0 0-9 52 0 0 9z" fill="#f2c14e" opacity=".7"/>
+    <circle r="7" fill="#14213d" stroke="#f2c14e" stroke-width="3"/>
+  </g>
+</svg>
