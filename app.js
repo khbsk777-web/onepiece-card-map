@@ -1,4 +1,4 @@
-// ワンピースカード冒険マップ（非公式） — 画面の動き
+// トレジャーカードマップ（非公式） — 画面の動き
 // 安全のための決まり：ユーザーが入力した文字は必ず textContent で表示し、HTMLとして扱わない。
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
 
