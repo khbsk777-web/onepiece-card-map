@@ -437,6 +437,24 @@ function openSheet(...nodes) {
 }
 function closeSheet() { $("#sheet").hidden = true; }
 
+// ---------- ログインの有効期限：24時間使わなかったら自動でログアウト ----------
+const SESSION_KEY = "opmap-last-active";
+const SESSION_MS = 24 * 60 * 60 * 1000;
+function touchSession() { try { localStorage.setItem(SESSION_KEY, String(Date.now())); } catch { /* 保存できない端末 */ } }
+function lastActive() {
+  try { return Number(localStorage.getItem(SESSION_KEY)) || 0; } catch { return 0; }
+}
+// 記録がまだない人（この機能を入れる前からログインしていた人）は、今から数える
+function sessionExpired() { const t = lastActive(); return t > 0 && Date.now() - t > SESSION_MS; }
+async function expireIfIdle() {
+  if (!S.user || !sessionExpired()) { if (S.user) touchSession(); return false; }
+  try { await S.backend.signOut(); } catch (e) { console.warn(e); }
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* なにもしない */ }
+  S.user = null; updateAccountBtn();
+  toast("24時間以上使われなかったので、安全のためログアウトしました。もう一度ログインしてね");
+  return true;
+}
+
 // ---------- ログインまわり ----------
 function ready() {
   if (!S.user) { openLogin(); return false; }
@@ -464,9 +482,9 @@ function openLogin() {
     if (p.length < 8) throw { code: "auth/weak-password" };
     return [e, p];
   };
-  g.onclick = busy(g, () => S.backend.signInGoogle());
-  login.onclick = busy(login, () => S.backend.signInEmail(...check()));
-  signup.onclick = busy(signup, async () => { await S.backend.signUpEmail(...check()); toast("確認メールを送りました"); });
+  g.onclick = busy(g, () => { touchSession(); return S.backend.signInGoogle(); });
+  login.onclick = busy(login, () => { const a = check(); touchSession(); return S.backend.signInEmail(...a); });
+  signup.onclick = busy(signup, async () => { const a = check(); touchSession(); await S.backend.signUpEmail(...a); toast("確認メールを送りました"); });
   forgot.onclick = busy(forgot, async () => {
     const e = clean(email.value, 254);
     if (!e) return toast("メールアドレスを入れてから押してね");
@@ -1069,11 +1087,17 @@ async function main() {
     $("#demoNote").hidden = false;
   }
   let first = true;
-  S.backend.onAuth((u) => {
+  S.backend.onAuth(async (u) => {
     S.user = u; updateAccountBtn();
+    if (u && await expireIfIdle()) { first = false; return; }
     if (!first && u && !$("#sheet").hidden) { if (u.emailVerified && !u.nickname) openNickname(); else if (!u.emailVerified) openVerify(); else closeSheet(); }
     first = false;
   });
+  // 使っているあいだは「最後に使った時刻」を更新。しばらく閉じていて戻ってきたら期限をチェック
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") expireIfIdle(); });
+  ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => {
+    if (S.user && Date.now() - lastActive() > 60000) expireIfIdle();
+  }, { passive: true }));
   $("#accountBtn").onclick = openAccount;
   $("#addStoreBtn").onclick = openAddStore;
   $("#feedBtn").onclick = openFeed;
