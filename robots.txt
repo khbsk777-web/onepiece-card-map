@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://treasure-card-map.github.io/sitemap.xml
