@@ -22,6 +22,7 @@ button{cursor:pointer}
 .fabs{position:fixed;right:12px;bottom:calc(16px + var(--safe-b));display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:900}
 .fab{border:0;border-radius:999px;background:var(--red);color:#fff;font-weight:800;padding:14px 18px;font-size:15px;box-shadow:0 4px 12px rgba(0,0,0,.25)}
 .fab.small{width:46px;height:46px;padding:0;background:#fff;color:var(--navy);font-size:18px}
+.fab.x-fab{display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-size:22px;text-decoration:none}
 .legend{position:fixed;left:8px;bottom:calc(16px + var(--safe-b));background:rgba(255,255,255,.92);border-radius:10px;padding:6px 8px;font-size:11px;display:flex;flex-direction:column;gap:2px;z-index:800}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
 .dot.in{background:var(--in)}.dot.low{background:var(--low)}.dot.out{background:var(--out)}.dot.soon{background:var(--soon)}.dot.none{background:var(--none)}
