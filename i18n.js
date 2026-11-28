@@ -107,6 +107,9 @@ function walk(root) {
 export function startI18n() {
   if (getLang() !== "en") return;
   document.documentElement.lang = "en";
+  // ブラウザの自動翻訳が英語を日本語に戻すと、書きかえ合いになるので止める
+  document.documentElement.setAttribute("translate", "no");
+  document.documentElement.classList.add("notranslate");
   walk(document.body);
   // 新しく出てきた部分も英語にする。
   // ・自分で書きかえた分には反応しない（止めてから書きかえて、また見はじめる）→ 無限ループにならない

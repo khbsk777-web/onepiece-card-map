@@ -1,7 +1,7 @@
 // トレジャーカードマップ（非公式） — 画面の動き
 // 安全のための決まり：ユーザーが入力した文字は必ず textContent で表示し、HTMLとして扱わない。
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
-import { getLang, setLang, startI18n } from "./i18n.js?v=2";
+import { getLang, setLang, startI18n } from "./i18n.js?v=3";
 
 // 他のサイトの中にこのアプリをうめこんで、だまして押させる攻撃（クリックジャッキング）を防ぐ
 if (window.top !== window.self) { try { window.top.location.replace(window.self.location.href); } catch { document.documentElement.style.display = "none"; } }
