@@ -268,11 +268,10 @@ function renderPlaces() {
     if (S.placesMode === "conv" && p.kind !== "conv" && p.kind !== "station") continue;
     if (p.kind !== "station" && isRegistered(p)) continue; // 報告があるお店は色つきピンで出す
     if (++n > 600) break;
-    // まだ投稿がないお店は名前を出さない（コンビニはチェーン名の札だけ）。押すと名前が出る。駅名はいつも表示
+    // まだ投稿がないお店は名前を出さない。押すと名前が出る。駅名はいつも表示
     const showName = p.kind === "station";
-    const node = p.kind === "conv"
-      ? el("div", { class: "poi conv" }, cvsBadge(p.chain), showName ? el("span", { class: "poi-name below", text: p.name }) : null)
-      : el("div", { class: `poi ${p.kind}` }, el("span", { class: "poi-ic", text: KIND[p.kind][0] }), showName ? el("span", { class: "poi-name", text: p.name }) : null);
+    // 投稿がないお店はチェーン名も出さず、種類のアイコンだけ（コンビニは🏪）
+    const node = el("div", { class: `poi ${p.kind}` }, el("span", { class: "poi-ic", text: KIND[p.kind][0] }), showName ? el("span", { class: "poi-name", text: p.name }) : null);
     const icon = L.divIcon({ className: "", html: node, iconSize: [24, 24], iconAnchor: [12, 12] });
     const station = p.kind === "station";
     const m = L.marker([p.lat, p.lng], { icon, title: p.name, keyboard: false, interactive: !station, zIndexOffset: station ? -300 : p.kind === "conv" ? -100 : -200 });
