@@ -28,8 +28,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for f in data/ranking.json data/trends.json data/stats.json data/trust.json sitemap.xml robots.txt area; do [ -f "$f" ] && git add "$f"; done; true
+          for f in data/ranking.json data/trends.json data/stats.json data/trust.json sitemap.xml robots.txt area; do [ -e "$f" ] && git add "$f"; done; true
           if git diff --cached --quiet; then echo "変更なし"; exit 0; fi
-          git commit -m "月間ランキングを更新"
+          git commit -m "ランキング・地域ページを更新"
           git pull --rebase origin main
           git push
