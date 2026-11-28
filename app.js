@@ -1,7 +1,7 @@
 // トレジャーカードマップ（非公式） — 画面の動き
 // 安全のための決まり：ユーザーが入力した文字は必ず textContent で表示し、HTMLとして扱わない。
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
-import { getLang, setLang, startI18n } from "./i18n.js?v=5";
+import { getLang, setLang, startI18n } from "./i18n.js?v=6";
 
 // 他のサイトの中にこのアプリをうめこんで、だまして押させる攻撃（クリックジャッキング）を防ぐ
 if (window.top !== window.self) { try { window.top.location.replace(window.self.location.href); } catch { document.documentElement.style.display = "none"; } }
@@ -1961,8 +1961,16 @@ async function openInvite() {
 // ---------- 在庫の通知（お気に入りのお店に「在庫あり」の報告が来たらお知らせ） ----------
 // しくみ：通知の宛先とお気に入りを、この端末の中で暗号化してから保存する。
 //         中身を読めるのは、通知を送る自動の仕組み（GitHub Actions）だけ。
-const PUSH_VAPID = "BAjOBoC35H8ly_ra_3ipozIODpXHDjLIVd8gVMWH36QNpjPJms3ZSxhgh4j8m7QEdgZ7oldkg7J9L7NDmlyQoDI";
-const PUSH_BOX = "BAiGrZ4v3AtE_vdMkGwyPqZE-WB66CRR4UFB3-VhAmkJ5i8xcmSRnLGNwOtHjGEhar9J6rp-5ncgWF_mzWyRtug";
+// 公開してよい鍵は、通知を送る自動の仕組みが data/push-public.json に書き出す
+let pushPubCache = null;
+async function loadPushPub() {
+  if (pushPubCache) return pushPubCache;
+  const res = await fetch("data/push-public.json", { cache: "no-cache" });
+  if (!res.ok) throw new Error("push-not-ready");
+  pushPubCache = await res.json();
+  return pushPubCache;
+}
+const PUSH_KID_KEY = "opmap-push-kid";
 const PUSH_KEY = "opmap-push";
 const b64u = {
   enc: (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
@@ -1970,7 +1978,8 @@ const b64u = {
 };
 async function sealBox(obj) {
   const { subtle } = crypto;
-  const serverPub = await subtle.importKey("raw", b64u.dec(PUSH_BOX), { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const pub = await loadPushPub();
+  const serverPub = await subtle.importKey("raw", b64u.dec(pub.boxPublicKey), { name: "ECDH", namedCurve: "P-256" }, false, []);
   const eph = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
   const bits = await subtle.deriveBits({ name: "ECDH", public: serverPub }, eph.privateKey, 256);
   const hk = await subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]);
@@ -1988,8 +1997,28 @@ async function pushSub(create) {
   const reg = await navigator.serviceWorker.register("sw.js");
   await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
-  if (!sub && create) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u.dec(PUSH_VAPID) });
+  if (!sub && create) {
+    const pub = await loadPushPub();
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u.dec(pub.vapidPublicKey) });
+    try { localStorage.setItem(PUSH_KID_KEY, pub.kid); } catch { /* なにもしない */ }
+  }
   return sub;
+}
+// 鍵が新しくなっていたら、通知の登録をやり直す（だめなら「ONにし直してね」と出す）
+async function checkPushKey() {
+  if (!pushOn() || !pushSupported() || Notification.permission !== "granted") return;
+  let pub, kid = "";
+  try { pub = await loadPushPub(); kid = localStorage.getItem(PUSH_KID_KEY) || ""; } catch { return; }
+  if (kid === pub.kid) return;
+  try {
+    const old = await pushSub(false);
+    if (old) await old.unsubscribe();
+    await pushSub(true);
+    if (S.user?.emailVerified) await syncPush();
+  } catch {
+    setPushOn(false);
+    toast("通知の設定が新しくなりました。メニューの「🔔 在庫の通知」からONにし直してね");
+  }
 }
 async function syncPush() {
   const sub = await pushSub(false);
@@ -2027,6 +2056,7 @@ async function openNotify() {
         setPushOn(false); toast("通知をOFFにしました"); return draw();
       }
       if (!ready()) return;
+      try { await loadPushPub(); } catch { return toast("通知の準備中です。30分ほどしてからもう一度ためしてね"); }
       const p = await Notification.requestPermission();
       if (p !== "granted") return toast("通知が許可されませんでした（設定から許可できます）");
       await pushSub(true);
@@ -2334,6 +2364,7 @@ async function main() {
   showFavNews();
   applyPrefFromUrl();
   showLotteryNews();
+  checkPushKey();
   // シェアされたリンク（?s=お店ID）から開いたら、そのお店を表示
   try {
     const sid = new URLSearchParams(location.search).get("s");

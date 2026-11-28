@@ -4,7 +4,7 @@ on:
   schedule:
     - cron: "11,41 * * * *" # 30分ごと
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: notify
   cancel-in-progress: false
@@ -23,12 +23,33 @@ jobs:
           path: data/push-state.json
           key: notify-state-${{ github.run_id }}
           restore-keys: notify-state-
+      - name: 通知用の鍵を読み出す（GitHubの中の一時保管場所）
+        id: keys
+        uses: actions/cache/restore@v4
+        with:
+          path: .push-keys.json
+          key: push-keys-v1
       - name: 通知を送る道具を入れる
         run: npm i --no-save web-push@3
       - name: 通知を送る
         env:
           PUSH_KEYS: ${{ secrets.PUSH_KEYS }}
         run: node scripts/notify.mjs
+      - name: 新しく作った鍵をしまう
+        if: steps.keys.outputs.cache-hit != 'true' && hashFiles('.push-keys.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .push-keys.json
+          key: push-keys-v1
+      - name: 公開用の鍵が変わっていたら保存
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/push-public.json
+          if git diff --cached --quiet; then echo "変更なし"; exit 0; fi
+          git commit -m "通知用の公開鍵を更新" -q
+          git pull --rebase -q origin main
+          git push -q
       - name: 前回の時刻を保存
         if: always()
         uses: actions/cache/save@v4

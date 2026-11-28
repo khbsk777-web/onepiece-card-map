@@ -78,10 +78,34 @@ function distKm(a, b) {
 }
 const hash = (s) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 
+// 鍵の置き場所：①GitHubの秘密（PUSH_KEYS）があればそれ ②なければ一時保管場所（.push-keys.json）③どちらもなければ新しく作る
+// 公開してよい半分（アプリが使う）は data/push-public.json に書き出す
+const KEY_FILE = ".push-keys.json";
+const PUB_FILE = "data/push-public.json";
+async function loadKeys() {
+  let keys = null;
+  if (process.env.PUSH_KEYS) keys = JSON.parse(process.env.PUSH_KEYS);
+  else { try { keys = JSON.parse(readFileSync(KEY_FILE, "utf8")); } catch { /* まだない */ } }
+  if (!keys) {
+    const v = webpush.generateVAPIDKeys();
+    const kp = await globalThis.crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    keys = { vapidPublicKey: v.publicKey, vapidPrivateKey: v.privateKey, boxPrivateJwk: await globalThis.crypto.subtle.exportKey("jwk", kp.privateKey) };
+    writeFileSync(KEY_FILE, JSON.stringify(keys), { mode: 0o600 });
+    console.log("通知用の鍵を新しく作りました");
+  }
+  const j = keys.boxPrivateJwk;
+  const boxPublicKey = Buffer.concat([Buffer.from([4]), b64u(j.x), b64u(j.y)]).toString("base64url");
+  const kid = createHash("sha256").update(keys.vapidPublicKey + boxPublicKey).digest("hex").slice(0, 12);
+  const pub = JSON.stringify({ kid, vapidPublicKey: keys.vapidPublicKey, boxPublicKey }) + "\n";
+  mkdirSync("data", { recursive: true });
+  let old = "";
+  try { old = readFileSync(PUB_FILE, "utf8"); } catch { /* はじめて */ }
+  if (old !== pub) { writeFileSync(PUB_FILE, pub); console.log("公開用の鍵を更新しました:", kid); }
+  return keys;
+}
+
 async function main() {
-  const raw = process.env.PUSH_KEYS || "";
-  if (!raw) { console.log("::warning::PUSH_KEYS が未登録なので通知はお休みです"); return; }
-  const keys = JSON.parse(raw);
+  const keys = await loadKeys();
   webpush.setVapidDetails("https://x.com/mapstoiawase", keys.vapidPublicKey, keys.vapidPrivateKey);
   const privKey = await globalThis.crypto.subtle.importKey("jwk", keys.boxPrivateJwk, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
 
