@@ -144,3 +144,4 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .x-card .btn{width:100%;margin:6px 0 0}
 .x-today{border:0;background:none;color:#6b7280;font-size:13px;margin-top:8px;padding:6px;text-decoration:underline;cursor:pointer}
 @keyframes xpop{from{transform:translateY(10px) scale(.97);opacity:0}to{transform:none;opacity:1}}
+.brand,.doc-brand{display:flex;align-items:center;gap:8px}.brand-logo{border-radius:7px;flex:none;box-shadow:0 1px 3px #0006}
