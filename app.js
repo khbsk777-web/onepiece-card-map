@@ -172,7 +172,6 @@ function render() {
 // ---------- 周辺のお店・駅（OpenStreetMap） ----------
 // まだ登録されていないお店と駅名を、地図を拡大したときだけ表示する
 const PLACE_MIN_ZOOM = 14;   // これ以上拡大したら表示
-const LABEL_ZOOM = 16;       // これ以上でお店の名前も表示（駅名はいつも表示）
 const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
 const KIND = { station: ["🚉", "駅"], conv: ["🏪", "コンビニ"], books: ["📚", "本屋"], mall: ["🏬", "商業施設"], hobby: ["🃏", "カード・ホビー店"], elec: ["🔌", "家電量販店"] };
 export function placeKind(t = {}) {
@@ -262,14 +261,15 @@ function renderPlaces() {
   if (!S.places) return;
   S.places.clearLayers();
   if (S.placesMode === "off" || S.map.getZoom() < PLACE_MIN_ZOOM) return;
-  const b = S.map.getBounds().pad(0.2), z = S.map.getZoom();
+  const b = S.map.getBounds().pad(0.2);
   let n = 0;
   for (const p of placeById.values()) {
     if (!b.contains([p.lat, p.lng])) continue;
     if (S.placesMode === "conv" && p.kind !== "conv" && p.kind !== "station") continue;
     if (p.kind !== "station" && isRegistered(p)) continue; // 報告があるお店は色つきピンで出す
     if (++n > 600) break;
-    const showName = p.kind === "station" || z >= LABEL_ZOOM;
+    // まだ投稿がないお店は名前を出さない（コンビニはチェーン名の札だけ）。押すと名前が出る。駅名はいつも表示
+    const showName = p.kind === "station";
     const node = p.kind === "conv"
       ? el("div", { class: "poi conv" }, cvsBadge(p.chain), showName ? el("span", { class: "poi-name below", text: p.name }) : null)
       : el("div", { class: `poi ${p.kind}` }, el("span", { class: "poi-ic", text: KIND[p.kind][0] }), showName ? el("span", { class: "poi-name", text: p.name }) : null);
