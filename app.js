@@ -651,8 +651,10 @@ async function openRanking() {
 
 function storeShareText(s, reps) {
   const r = [...reps].sort((a, b) => b.createdAt - a.createdAt)[0];
-  const st = r ? `${STATUS[r.status] || ""}${itemLabel(r) ? `（${itemLabel(r)}）` : ""}・${timeAgo(r.createdAt)}` : "まだ報告なし";
-  return `【${s.name}】ワンピースカードの在庫：${st}\nみんなで在庫を報告し合う地図はこちら👇\n${TAGS}`;
+  // お店の名前や場所は入れない（どこにいるか分からないように）
+  const item = r && itemLabel(r) ? `「${itemLabel(r)}」` : "ワンピースカード";
+  const head = r && ["in", "low"].includes(r.status) ? `🎉 ${item}を見つけた！` : `🗺 ${item}の在庫をチェック中！`;
+  return `${head}\nみんなでシェアしてカード集めよう！\n在庫を報告し合える地図アプリ「トレジャーカードマップ」はこちら👇\n${TAGS}`;
 }
 
 async function openStore(id) {
@@ -665,7 +667,7 @@ async function openStore(id) {
   const gmap = el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" });
   const listBox = el("div");
   const ch = chainOf(s.name);
-  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), `${APP_URL}?s=${encodeURIComponent(s.id)}`));
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), APP_URL));
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged] = await Promise.all([S.backend.myVotes(ids, "like"), S.backend.myVotes(ids, "flag")]); } catch {}
   }
