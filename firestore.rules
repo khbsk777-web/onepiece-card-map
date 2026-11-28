@@ -1,6 +1,6 @@
 rules_version = '2';
 // ============================================================
-// ワンピカ在庫マップ セキュリティルール
+// トレジャーカードマップ セキュリティルール
 // 「だれが・何を・どんな形で」書けるかをサーバー側で決める。
 // アプリ側をいじられても、ここを通らない書き込みはすべて拒否される。
 // ============================================================
@@ -17,6 +17,15 @@ service cloud.firestore {
     function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
     // URLっぽい文字・タグを禁止（スパム／いたずら対策）
     function safeText(v) { return !v.lower().matches('(?s).*(https?://|www\\.|<|>).*'); }
+    // 見えない文字・文字の向きを変える特殊文字（なりすまし・表示崩し）を禁止。改行はOK
+    function noHidden(v) { return !v.matches('(?s).*[\\x{0000}-\\x{0009}\\x{000B}-\\x{001F}\\x{007F}\\x{200B}-\\x{200F}\\x{202A}-\\x{202E}\\x{2060}-\\x{2069}\\x{FEFF}].*'); }
+    // 電話番号・メールアドレスの書きこみを禁止（ほかの人の個人情報を守る）
+    function noPII(v) { return !v.matches('(?s).*(0[0-9]{1,4}-?[0-9]{1,4}-?[0-9]{4}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}).*'); }
+    // ふつうの文章チェックをまとめたもの
+    function okText(v) { return safeText(v) && noHidden(v) && noPII(v); }
+    // 運営・公式になりすますニックネームを禁止
+    function okNick(v) { return okText(v) && !v.matches('.*@.*')
+      && !v.lower().matches('.*(運営|公式|管理者|admin|official|support|bandai|バンダイ|トレジャーカードマップ).*'); }
     function exactKeys(d, keys) { return d.keys().hasAll(keys) && d.keys().hasOnly(keys); }
     function rlPath() { return /databases/$(database)/documents/rateLimits/$(request.auth.uid); }
     // 同じ書き込みの中で rateLimits の時刻が「今」に更新されているか
@@ -32,13 +41,11 @@ service cloud.firestore {
       allow read: if isMe(uid);
       allow create: if verified() && isMe(uid)
         && exactKeys(request.resource.data, ['nickname', 'createdAt'])
-        && str(request.resource.data.nickname, 1, 20) && safeText(request.resource.data.nickname)
-        && !request.resource.data.nickname.matches('.*@.*')
+        && str(request.resource.data.nickname, 1, 20) && okNick(request.resource.data.nickname)
         && request.resource.data.createdAt == request.time;
       allow update: if verified() && isMe(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname'])
-        && str(request.resource.data.nickname, 1, 20) && safeText(request.resource.data.nickname)
-        && !request.resource.data.nickname.matches('.*@.*');
+        && str(request.resource.data.nickname, 1, 20) && okNick(request.resource.data.nickname);
       // アカウント削除のときだけ、自分のニックネームを消せる
       allow delete: if isMe(uid);
     }
@@ -70,8 +77,8 @@ service cloud.firestore {
         // 開拓者（最初に登録した人）の名前は、本人のニックネームと同じときだけOK（なりすまし防止）
         && (!('pioneer' in request.resource.data)
             || request.resource.data.pioneer == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.nickname)
-        && str(request.resource.data.name, 1, 40) && safeText(request.resource.data.name)
-        && str(request.resource.data.address, 0, 120) && safeText(request.resource.data.address)
+        && str(request.resource.data.name, 1, 40) && safeText(request.resource.data.name) && noHidden(request.resource.data.name)
+        && str(request.resource.data.address, 0, 120) && safeText(request.resource.data.address) && noHidden(request.resource.data.address)
         && request.resource.data.pref in prefs()
         && request.resource.data.lat is number && request.resource.data.lat > 20 && request.resource.data.lat < 46
         && request.resource.data.lng is number && request.resource.data.lng > 122 && request.resource.data.lng < 154
@@ -101,7 +108,7 @@ service cloud.firestore {
         // 購入制限（例：1人3パックまで）は任意・決まった値だけ
         && (!('limit' in d()) || d().limit in ['none', 'p1', 'p2', 'p3', 'p5', 'p10', 'box1'])
         // 商品名（例：最強の戦士）は任意・30文字まで・URL不可
-        && (!('itemName' in d()) || (str(d().itemName, 1, 30) && safeText(d().itemName)))
+        && (!('itemName' in d()) || (str(d().itemName, 1, 30) && okText(d().itemName)))
         && d().uid == request.auth.uid
         && d().nickname == myNickname()
         && d().storeId is string && exists(/databases/$(database)/documents/stores/$(d().storeId))
@@ -109,7 +116,7 @@ service cloud.firestore {
         && d().status in ['in', 'low', 'out', 'soon', 'na']
         && d().saleType in ['pack', 'box', 'lottery', 'other']
         && d().setCode is string && d().setCode.matches('^[A-Z0-9-]{0,12}$')
-        && str(d().note, 0, 100) && safeText(d().note)
+        && str(d().note, 0, 100) && okText(d().note)
         && d().likes == 0 && d().flags == 0
         && d().createdAt == request.time
         && stamped('lastReport');
@@ -217,6 +224,7 @@ service cloud.firestore {
       allow create: if verified()
         && exactKeys(request.resource.data, ['storeId', 'slot', 'n'])
         && request.resource.data.storeId is string && request.resource.data.storeId.size() <= 64
+        && exists(/databases/$(database)/documents/stores/$(request.resource.data.storeId))
         && request.resource.data.slot == slotNow()
         && bucketId == request.resource.data.storeId + '_' + string(slotNow())
         && request.resource.data.n == 1 && markAfter();

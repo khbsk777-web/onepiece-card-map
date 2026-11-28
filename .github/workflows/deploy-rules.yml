@@ -7,6 +7,8 @@ on:
       - "firestore.rules"
       - "tests/**"
       - ".github/workflows/deploy-rules.yml"
+permissions:
+  contents: read
 concurrency:
   group: deploy-rules
   cancel-in-progress: false

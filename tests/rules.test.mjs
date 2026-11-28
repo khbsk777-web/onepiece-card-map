@@ -110,6 +110,34 @@ await t("人数を+5は拒否", assertFails(going(verified("carol"), "carol", 7)
 await t("ちがう時間帯の番号は拒否", assertFails(going(verified("dave"), "dave", 1, slot - 5)));
 await t("だれが行くかは他人には見えない", assertFails(getDoc(doc(bob, "goings", `s1_${slot}`, "marks", "alice"))));
 await t("人数はだれでも見られる", assertSucceeds(getDoc(doc(guest, "goings", `s1_${slot}`))));
+
+// ---- なりすまし・個人情報・見えない文字の対策 ----
+const erin = verified("erin");
+const nick = (n) => setDoc(doc(erin, "users/erin"), { nickname: n, createdAt: serverTimestamp() });
+await t("「運営」を含むニックネームは拒否", assertFails(nick("トレカ運営")));
+await t("「公式」を含むニックネームは拒否", assertFails(nick("公式アカウント")));
+await t("Adminを含むニックネームは拒否（大文字でも）", assertFails(nick("ADMIN太郎")));
+await t("見えない文字入りのニックネームは拒否", assertFails(nick("アリ\u200Bス")));
+await t("文字の向きを変える文字は拒否", assertFails(nick("abc\u202Edef")));
+await t("電話番号入りのニックネームは拒否", assertFails(nick("09012345678")));
+await t("ふつうのニックネームはOK", assertSucceeds(nick("エリン")));
+const erinReport = (over = {}) => {
+  const b = writeBatch(erin);
+  b.set(doc(erin, "rateLimits/erin"), { lastReport: serverTimestamp() }, { merge: true });
+  b.set(doc(collection(erin, "reports")), report({ uid: "erin", nickname: "エリン", ...over }));
+  return b.commit();
+};
+await t("メモに電話番号は拒否", assertFails(erinReport({ note: "店員 080-1234-5678" })));
+await t("メモにメールアドレスは拒否", assertFails(erinReport({ note: "連絡は abc@example.com" })));
+await t("商品名に見えない文字は拒否", assertFails(erinReport({ itemName: "最強\u200Dの戦士" })));
+await t("メモの改行はOK・日付もOK", assertSucceeds(erinReport({ note: "レジ横\n2026-11-28 入荷" })));
+await t("ないお店の「これから行く」は拒否", assertFails((async () => {
+  const b = writeBatch(erin);
+  const id = `nai_${slot}`;
+  b.set(doc(erin, "goings", id), { storeId: "nai", slot, n: 1 });
+  b.set(doc(erin, "goings", id, "marks", "erin"), { createdAt: serverTimestamp() });
+  return b.commit();
+})()));
 await t("想定外の場所は読めない", assertFails(getDoc(doc(guest, "admin/secret"))));
 
 for (const r of results) console.log(r.join(" "));

@@ -2,6 +2,9 @@
 // 安全のための決まり：ユーザーが入力した文字は必ず textContent で表示し、HTMLとして扱わない。
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
 
+// 他のサイトの中にこのアプリをうめこんで、だまして押させる攻撃（クリックジャッキング）を防ぐ
+if (window.top !== window.self) { try { window.top.location.replace(window.self.location.href); } catch { document.documentElement.style.display = "none"; } }
+
 // ---------- 定数 ----------
 export const PRODUCTS = { booster: "ブースターパック", extra: "エクストラブースター", premium: "プレミアムブースター", starter: "スタートデッキ", other: "その他" };
 export const STATUS = { in: "⭐ 在庫あり", low: "⭐ 残りわずか", out: "売り切れ", soon: "入荷予定", na: "取り扱いなし" };
@@ -17,6 +20,18 @@ const DAYS = 7;            // 何日前までの報告を読むか
 const STALE_H = 72;        // これより古い情報は薄く表示
 const HIDE_FLAGS = 3;      // 通報がこの数以上で非表示
 const URL_RE = /(https?:\/\/|www\.|\.com|\.jp\b|\.xyz)/i;
+// 見えない文字・向きを変える文字（なりすまし対策）。サーバーのルールと同じ
+const HIDDEN_RE = /[\u0000-\u0009\u000B-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/;
+// 電話番号・メールアドレス（個人情報の書きこみ防止）。全角数字も半角にしてからチェック
+const PII_RE = /(0[0-9]{1,4}-?[0-9]{1,4}-?[0-9]{4}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/;
+const NICK_NG = /(運営|公式|管理者|admin|official|support|bandai|バンダイ|トレジャーカードマップ)/i;
+// 入力した文章の問題を1つ返す（問題なければ空）
+function textProblem(v, { pii = true } = {}) {
+  if (URL_RE.test(v) || /[<>]/.test(v)) return "URLや < > は書けません";
+  if (HIDDEN_RE.test(v)) return "見えない特殊な文字は使えません";
+  if (pii && PII_RE.test(String(v).normalize("NFKC").replace(/[ー－]/g, "-"))) return "電話番号やメールアドレスは書けません（個人情報を守るため）";
+  return "";
+}
 
 // ---------- 小さな道具 ----------
 const $ = (s) => document.querySelector(s);
@@ -570,7 +585,9 @@ function openNickname(after) {
   save.onclick = busy(save, async () => {
     const n = clean(input.value, 20);
     if (!n) return toast("ニックネームを入れてね");
-    if (URL_RE.test(n) || /[<>@]/.test(n)) return toast("URLや記号（< > @）は使えません");
+    if (/@/.test(n)) return toast("記号の @ は使えません");
+    if (textProblem(n)) return toast(textProblem(n));
+    if (NICK_NG.test(n)) return toast("運営・公式とまちがえやすい名前は使えません");
     await S.backend.setNickname(n);
     S.user = { ...S.user, nickname: n };
     updateAccountBtn(); toast("ニックネームを保存しました");
@@ -1484,7 +1501,7 @@ function openReportForm(s, place = null, initStatus = "in") {
   send.onclick = busy(send, async () => {
     const itemName = normItem(item.value);
     const n = clean(note.value, 100);
-    if (URL_RE.test(itemName + n) || /[<>]/.test(itemName + n)) return toast("商品名やメモにURLや < > は書けません");
+    { const why = textProblem(itemName + " " + n); if (why) return toast("商品名やメモに" + why); }
     if (!(await nearCheck(place || s))) return;
     if (place) {
       const st = await storeForPlace(place, prefSel.value);
@@ -1585,7 +1602,7 @@ function storeForm(pt, place) {
     const n = clean(name.value, 40), a = clean(addr.value, 120);
     if (!n) return toast("お店の名前を入れてね");
     if (!pref.value) return toast("都道府県を選んでね");
-    if (URL_RE.test(n + a) || /[<>]/.test(n + a)) return toast("URLや < > は入れられません");
+    { const why = textProblem(n + " " + a, { pii: false }); if (why) return toast(why); }
     if (!(await nearCheck(pt))) return;
     const st = await S.backend.addStore({ name: n, lat: +pt.lat.toFixed(6), lng: +pt.lng.toFixed(6), address: a, pref: pref.value });
     S.stores.push(st); addPrefOption(st.pref); render();

@@ -1,0 +1,7 @@
+# 自動更新の仕組み（GitHub Actions）で使う部品に、安全のための更新が出たら自動で知らせる（無料）
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
