@@ -524,6 +524,7 @@ async function openAccount() {
   out.onclick = busy(out, async () => { await S.backend.signOut(); closeSheet(); toast("ログアウトしました"); });
   del.onclick = openDeleteAccount;
   openSheet(el("h2", { text: S.user.nickname }), el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt、開拓1店＝20pt" }), stat, nick, out,
+    el("button", { class: "btn ghost", type: "button", text: "🏆 月間ランキング・表彰", onclick: openRanking }),
     el("button", { class: "btn ghost", type: "button", text: "🏴 開拓者ランキング", onclick: openPioneers }), aboutLink(), del);
   try {
     const st = await S.backend.myStats();
@@ -599,6 +600,52 @@ function openPioneers() {
     ...(list.length ? list.slice(0, 30).map(([n, c], i) => el("div", { class: "pioneer-row" + (n === me ? " me" : "") },
       el("span", { class: "rank", text: medal(i) }), el("span", { class: "name", text: n }), el("span", { class: "cnt", text: `${c}店` })))
       : [el("p", { class: "small", text: "まだ開拓者がいません。最初の開拓者になろう！" })]),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+
+// ---------- 月間ランキングと表彰（集計は GitHub Actions が6時間ごとに data/ranking.json に保存） ----------
+let rankingCache = null;
+async function loadRanking() {
+  if (rankingCache && Date.now() - rankingCache.t < 10 * 60e3) return rankingCache.data;
+  const res = await fetch("data/ranking.json", { cache: "no-cache" });
+  if (!res.ok) throw new Error("まだランキングがありません");
+  rankingCache = { t: Date.now(), data: await res.json() };
+  return rankingCache.data;
+}
+const monthLabel = (ym) => { const [y, m] = String(ym || "").split("-"); return y ? `${y}年${Number(m)}月` : ""; };
+const medal = (i) => ["🥇", "🥈", "🥉"][i] || `${i + 1}位`;
+function rankRows(list, me) {
+  return list.map((x, i) => el("div", { class: "pioneer-row" + (x.name === me ? " me" : "") },
+    el("span", { class: "rank", text: medal(i) }),
+    el("span", { class: "name" }, x.name, x.reports != null ? el("small", { class: "rank-sub", text: ` 報告${x.reports}・👍${x.likes}・開拓${x.pioneer}` }) : null),
+    el("span", { class: "cnt", text: `${x.pt}pt` })));
+}
+async function openRanking() {
+  openSheet(el("h2", { text: "🏆 月間ランキング" }), el("p", { class: "sub", text: "読み込み中…" }));
+  let d;
+  try { d = await loadRanking(); } catch {
+    return openSheet(el("h2", { text: "🏆 月間ランキング" }), el("p", { class: "sub", text: "ランキングはまだ集計されていません。6時間ごとに更新されます。" }),
+      el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+  }
+  const me = S.user?.nickname;
+  const cur = d.current || { top: [] }, last = d.last || { top: [] };
+  const myIdx = me ? cur.top.findIndex((x) => x.name === me) : -1;
+  const upd = d.updated ? new Date(d.updated) : null;
+  const share = last.top.length ? xShareBtn(
+    `🏆 ${monthLabel(last.month)}のトレジャーカードマップ 月間ランキング\n` +
+    last.top.slice(0, 3).map((x, i) => `${["🥇", "🥈", "🥉"][i]} ${x.name}さん ${x.pt}pt`).join("\n") +
+    `\n在庫報告ありがとうございました！\n${TAGS}`, APP_URL) : null;
+  openSheet(el("h2", { text: "🏆 月間ランキング" }),
+    el("p", { class: "sub", text: `報告1回＝10pt・👍1つ＝5pt・開拓1店＝20pt。毎月1日にリセット。上位の人は毎月ここで表彰します（賞品なし・名誉だけ）。${upd ? `（${upd.getMonth() + 1}/${upd.getDate()} ${upd.getHours()}時 更新）` : ""}` }),
+    el("h3", { text: `${monthLabel(cur.month)}（${cur.players || 0}人が参加中）` }),
+    me ? el("p", { class: "pioneer-me", text: myIdx >= 0 ? `あなた（${me}）：${myIdx + 1}位・${cur.top[myIdx].pt}pt` : `あなた（${me}）：まだランク外。報告や開拓でポイントをためよう！` }) : null,
+    ...(cur.top.length ? rankRows(cur.top, me) : [el("p", { class: "small", text: "今月はまだだれもポイントを持っていません。一番乗りのチャンス！" })]),
+    last.top.length ? el("h3", { text: `🎉 ${monthLabel(last.month)}の表彰` }) : null,
+    ...(last.top.length ? rankRows(last.top.slice(0, 3), me) : []),
+    share,
+    (d.hall || []).length > 1 ? el("details", { class: "hall" }, el("summary", { text: "📜 歴代の表彰" }),
+      ...d.hall.map((h) => el("p", { class: "small", text: `${monthLabel(h.month)}：` + h.top.map((x, i) => `${["🥇", "🥈", "🥉"][i]}${x.name}（${x.pt}pt）`).join(" ") }))) : null,
+    el("button", { class: "btn ghost", type: "button", text: "🏴 開拓者ランキング（ずっと）", onclick: openPioneers }),
     el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
 }
 
@@ -928,7 +975,9 @@ function openFeed() {
     return s && (!S.pref || s.pref === S.pref) && (!S.product || r.product === S.product);
   }).slice(0, 40);
   openSheet(el("h2", { text: "🆕 新着の報告" }), el("p", { class: "sub", text: S.pref || "全国" }),
-    el("button", { class: "btn sec", type: "button", text: "🏴 開拓者ランキングを見る", onclick: openPioneers }),
+    el("div", { class: "two-btn" },
+      el("button", { class: "btn sec", type: "button", text: "🏆 月間ランキング", onclick: openRanking }),
+      el("button", { class: "btn sec", type: "button", text: "🏴 開拓者", onclick: openPioneers })),
     ...(items.length ? items.map((r) => {
       const s = S.stores.find((x) => x.id === r.storeId);
       return el("div", { class: "feed-item", role: "button", tabindex: "0", onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } },
