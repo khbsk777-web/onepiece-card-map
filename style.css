@@ -210,3 +210,17 @@ body.has-strip .release-banner{top:150px}
 body.has-strip .leaflet-top{top:74px}
 html[data-theme=dark] .stock-strip{background:#1f2937;border-color:#3b2f0b}
 html[data-theme=dark] .strip-item{background:#111827;color:var(--ink);border-color:#374151}
+/* 営業時間・これから行く */
+.hours{font-size:13px;color:#374151;margin:-2px 0 8px}
+.go-row{display:flex;align-items:center;gap:10px;margin:0 0 8px;flex-wrap:wrap}
+.go-btn{border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:6px 14px;font-weight:800;font-size:14px}
+.go-btn:disabled{opacity:.7}
+.go-info{font-size:13px;font-weight:700;color:#1d4ed8}
+.btn.sec.admin{background:#7c3aed;color:#fff}.btn.sec.release{background:#d62828;color:#fff}
+/* 管理画面の棒グラフ */
+.stat-bar{display:grid;grid-template-columns:44px 1fr 92px;align-items:center;gap:6px;font-size:12px;margin:3px 0}
+.stat-bar .bar{display:block;height:12px;background:#f2c14e;border-radius:6px;min-width:2px}
+.stat-bar .v{color:#6b7280;text-align:right}
+html[data-theme=dark] .hours{color:#cbd5e1}
+html[data-theme=dark] .go-btn{background:#1e3a8a;color:#dbeafe;border-color:#1e40af}
+html[data-theme=dark] .go-info{color:#93c5fd}

@@ -20,6 +20,8 @@ async function t(name, p) {
 await env.withSecurityRulesDisabled(async (c) => {
   const db = c.firestore();
   await setDoc(doc(db, "stores/s1"), { name: "店", lat: 35, lng: 135, address: "", pref: "大阪府", createdBy: "x", createdAt: new Date() });
+  await setDoc(doc(db, "admins/boss"), { note: "運営者" });
+  await setDoc(doc(db, "reports/r9"), { storeId: "s1", uid: "bob", nickname: "ボブ", product: "booster", setCode: "", status: "in", saleType: "pack", note: "", likes: 0, flags: 3, createdAt: new Date() });
   await setDoc(doc(db, "reports/r1"), { storeId: "s1", uid: "bob", nickname: "ボブ", product: "booster", setCode: "", status: "in", saleType: "pack", note: "", likes: 0, flags: 0, createdAt: new Date() });
 });
 
@@ -86,6 +88,28 @@ await t("開拓者の名前を他人の名前にするのは拒否", assertFails
 await t("開拓者の名前が自分のニックネームならOK", assertSucceeds(newStore("アリス")));
 await t("他人のニックネームは削除できない", assertFails(deleteDoc(doc(verified("bob"), "users/alice"))));
 await t("自分のニックネームは削除できる（アカウント削除）", assertSucceeds(deleteDoc(doc(alice, "users/alice"))));
+// ---- 運営者 ----
+const boss = verified("boss");
+await t("運営者でない人は他人の報告を消せない", assertFails(deleteDoc(doc(alice, "reports/r9"))));
+await t("運営者は通報された報告を消せる", assertSucceeds(deleteDoc(doc(boss, "reports/r9"))));
+await t("運営者の名簿は自分で作れない", assertFails(setDoc(doc(alice, "admins/alice"), { note: "x" })));
+await t("運営者の名簿は他人には読めない", assertFails(getDoc(doc(alice, "admins/boss"))));
+// ---- これから行く ----
+const slot = Math.floor(Date.now() / 7200000);
+const going = (db, uid, n, s = slot) => (async () => {
+  const b = writeBatch(db);
+  const id = `s1_${s}`;
+  b.set(doc(db, "goings", id), { storeId: "s1", slot: s, n }, n > 1 ? { merge: true } : undefined);
+  b.set(doc(db, "goings", id, "marks", uid), { createdAt: serverTimestamp() });
+  return b.commit();
+})();
+await t("「これから行く」1人目はOK", assertSucceeds(going(alice, "alice", 1)));
+await t("同じ人の2回目は拒否", assertFails(going(alice, "alice", 2)));
+await t("2人目は+1ならOK", assertSucceeds(going(bob, "bob", 2)));
+await t("人数を+5は拒否", assertFails(going(verified("carol"), "carol", 7)));
+await t("ちがう時間帯の番号は拒否", assertFails(going(verified("dave"), "dave", 1, slot - 5)));
+await t("だれが行くかは他人には見えない", assertFails(getDoc(doc(bob, "goings", `s1_${slot}`, "marks", "alice"))));
+await t("人数はだれでも見られる", assertSucceeds(getDoc(doc(guest, "goings", `s1_${slot}`))));
 await t("想定外の場所は読めない", assertFails(getDoc(doc(guest, "admin/secret"))));
 
 for (const r of results) console.log(r.join(" "));

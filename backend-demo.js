@@ -73,7 +73,7 @@ export function createDemoBackend() {
       const rep = { id: id(), ...r, uid: "me", nickname: d.user.nickname, likes: 0, flags: 0, createdAt: Date.now() };
       d.reports.push(rep); d.lastReport = Date.now(); save(); return rep;
     },
-    async deleteReport(rid) { d.reports = d.reports.filter((x) => !(x.id === rid && x.uid === "me")); save(); },
+    async deleteReport(rid) { d.reports = d.reports.filter((x) => x.id !== rid); save(); },
     async vote(rid, kind) {
       const [field, sub] = { like: ["likes", "likes"], flag: ["flags", "flags"], still: ["still", "stills"], gone: ["gone", "gones"] }[kind];
       d[sub] = d[sub] || {};
@@ -82,6 +82,16 @@ export function createDemoBackend() {
       const rep = d.reports.find((x) => x.id === rid);
       if (rep) rep[field] = (rep[field] || 0) + 1;
       save();
+    },
+    async isAdmin() { return !!d.user; },
+    async adminFlagged() { return { reports: d.reports.filter((r) => (r.flags || 0) >= 1), photos: [] }; },
+    async adminDeleteStore(id) { d.stores = d.stores.filter((s) => s.id !== id); save(); },
+    async goingCount(storeId) { const g = (d.goings || {})[storeId] || { n: 0, mine: false }; return g; },
+    async goTo(storeId) {
+      d.goings = d.goings || {};
+      const g = d.goings[storeId] || (d.goings[storeId] = { n: 0, mine: false });
+      if (g.mine) throw new Error("already");
+      g.n++; g.mine = true; save(); return g.n;
     },
     async myReportTimes() { return d.reports.filter((r) => r.uid === "me").map((r) => r.createdAt); },
     async listPhotos(storeId) { return wait((d.photos || []).filter((x) => x.storeId === storeId)); },

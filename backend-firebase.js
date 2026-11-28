@@ -207,6 +207,41 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
       profile = null;
       await A.deleteUser(u);
     },
+    // ---- 運営者 ----
+    async isAdmin() {
+      if (!auth.currentUser) return false;
+      try { return (await F.getDoc(F.doc(db, "admins", auth.currentUser.uid))).exists(); } catch { return false; }
+    },
+    async adminFlagged() {
+      const [rs, ps] = await Promise.all([
+        F.getDocs(F.query(F.collection(db, "reports"), F.where("flags", ">=", 1), F.orderBy("flags", "desc"), F.limit(50))),
+        F.getDocs(F.query(F.collection(db, "photos"), F.where("flags", ">=", 1), F.orderBy("flags", "desc"), F.limit(30))),
+      ]);
+      const map = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data(), createdAt: ts(d.data().createdAt) }));
+      return { reports: map(rs), photos: map(ps) };
+    },
+    async adminDeleteStore(id) { await F.deleteDoc(F.doc(db, "stores", id)); },
+    // ---- これから行く（2時間ごとの人数） ----
+    async goingCount(storeId) {
+      const slot = Math.floor(Date.now() / 7200000);
+      const snap = await F.getDoc(F.doc(db, "goings", `${storeId}_${slot}`));
+      let mine = false;
+      if (auth.currentUser) { try { mine = (await F.getDoc(F.doc(db, "goings", `${storeId}_${slot}`, "marks", auth.currentUser.uid))).exists(); } catch { /* なし */ } }
+      return { n: snap.exists() ? snap.data().n : 0, mine };
+    },
+    async goTo(storeId) {
+      const uid = auth.currentUser.uid;
+      const slot = Math.floor(Date.now() / 7200000);
+      const ref = F.doc(db, "goings", `${storeId}_${slot}`), mark = F.doc(db, "goings", `${storeId}_${slot}`, "marks", uid);
+      return F.runTransaction(db, async (tx) => {
+        const [g, m] = [await tx.get(ref), await tx.get(mark)];
+        if (m.exists()) throw new Error("already");
+        const n = g.exists() ? g.data().n + 1 : 1;
+        if (g.exists()) tx.update(ref, { n }); else tx.set(ref, { storeId, slot, n });
+        tx.set(mark, { createdAt: F.serverTimestamp() });
+        return n;
+      });
+    },
     // 自分の報告の日時（バッジの「連続報告」用。最大200件）
     async myReportTimes() {
       const q = F.query(F.collection(db, "reports"), F.where("uid", "==", auth.currentUser.uid), F.limit(200));

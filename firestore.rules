@@ -12,6 +12,8 @@ service cloud.firestore {
     // メール確認済みの人だけ（Googleログインは自動で確認済み）
     function verified() { return signedIn() && request.auth.token.email_verified == true; }
     function isMe(uid) { return signedIn() && request.auth.uid == uid; }
+    // 運営者：Firebaseの管理画面で admins/{自分のuid} を作った人だけ（アプリからは作れない）
+    function isAdmin() { return verified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
     function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
     // URLっぽい文字・タグを禁止（スパム／いたずら対策）
     function safeText(v) { return !v.lower().matches('(?s).*(https?://|www\\.|<|>).*'); }
@@ -76,8 +78,9 @@ service cloud.firestore {
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.createdAt == request.time
         && stamped('lastStore');
-      // 変更・削除は管理者（Firebaseコンソール）だけ
-      allow update, delete: if false;
+      // 変更はだれもできない。削除は運営者だけ（ウソのお店の削除）
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
     // ---------- 在庫の報告 ----------
@@ -114,7 +117,7 @@ service cloud.firestore {
       // 「まだあった」「もうなかった」も1人1回の+1だけ
       allow update: if verified() && (counterPlusOne('likes', 'likes') || counterPlusOne('flags', 'flags')
         || counterPlusOne('still', 'stills') || counterPlusOne('gone', 'gones'));
-      allow delete: if verified() && resource.data.uid == request.auth.uid;
+      allow delete: if (verified() && resource.data.uid == request.auth.uid) || isAdmin();
 
       match /likes/{uid} {
         allow read: if isMe(uid);
@@ -174,7 +177,7 @@ service cloud.firestore {
         && resource.data.uid != request.auth.uid
         && !exists(/databases/$(database)/documents/photos/$(photoId)/flags/$(request.auth.uid))
         && existsAfter(/databases/$(database)/documents/photos/$(photoId)/flags/$(request.auth.uid));
-      allow delete: if verified() && resource.data.uid == request.auth.uid;
+      allow delete: if (verified() && resource.data.uid == request.auth.uid) || isAdmin();
 
       match /flags/{uid} {
         allow read: if isMe(uid);
@@ -197,7 +200,39 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/photos/$(photoId))
         && getAfter(/databases/$(database)/documents/photos/$(photoId)).data.uid == request.auth.uid;
       allow update: if false;
-      allow delete: if verified() && resource.data.uid == request.auth.uid;
+      allow delete: if (verified() && resource.data.uid == request.auth.uid) || isAdmin();
+    }
+
+    // ---------- 運営者の名簿（読むのは本人だけ。書きこみはFirebaseの管理画面からだけ） ----------
+    match /admins/{uid} {
+      allow read: if isMe(uid);
+      allow write: if false;
+    }
+
+    // ---------- 「これから行く」：2時間ごとの人数（だれが行くかは本人以外には見えない） ----------
+    match /goings/{bucketId} {
+      function slotNow() { return int(request.time.toMillis() / 7200000); }
+      function markAfter() { return existsAfter(/databases/$(database)/documents/goings/$(bucketId)/marks/$(request.auth.uid)); }
+      allow read: if true;
+      allow create: if verified()
+        && exactKeys(request.resource.data, ['storeId', 'slot', 'n'])
+        && request.resource.data.storeId is string && request.resource.data.storeId.size() <= 64
+        && request.resource.data.slot == slotNow()
+        && bucketId == request.resource.data.storeId + '_' + string(slotNow())
+        && request.resource.data.n == 1 && markAfter();
+      allow update: if verified()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['n'])
+        && request.resource.data.n == resource.data.n + 1
+        && !exists(/databases/$(database)/documents/goings/$(bucketId)/marks/$(request.auth.uid)) && markAfter();
+      allow delete: if false;
+      match /marks/{uid} {
+        allow read: if isMe(uid);
+        allow create: if verified() && isMe(uid)
+          && exactKeys(request.resource.data, ['createdAt']) && request.resource.data.createdAt == request.time
+          && getAfter(/databases/$(database)/documents/goings/$(bucketId)).data.n
+             == (exists(/databases/$(database)/documents/goings/$(bucketId)) ? get(/databases/$(database)/documents/goings/$(bucketId)).data.n : 0) + 1;
+        allow update, delete: if false;
+      }
     }
 
     // それ以外の場所はすべて禁止

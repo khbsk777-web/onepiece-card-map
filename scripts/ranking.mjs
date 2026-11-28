@@ -83,7 +83,8 @@ const TREND_OUT = "data/trends.json";
 async function trends() {
   const to = new Date().toISOString();
   const from = new Date(Date.now() - 60 * 864e5).toISOString();
-  const reps = await readAll("reports", ["storeId", "status", "flags", "createdAt"], from, to);
+  const reps = await readAll("reports", ["storeId", "status", "flags", "uid", "createdAt"], from, to);
+  await stats(reps, from, to);
   const stores = {};
   for (const r of reps) {
     if (!["in", "low"].includes(r.status) || (r.flags || 0) >= HIDE_FLAGS || !r.storeId) continue;
@@ -101,7 +102,29 @@ async function trends() {
   writeFileSync(TREND_OUT, JSON.stringify({ updated: new Date().toISOString(), days: 60, stores }) + "\n");
 }
 
+// ---- 運営者向けの利用状況（毎日の報告数・報告した人数。数だけで、だれかは入れない） ----
+const STATS_OUT = "data/stats.json";
+async function stats(reps, from, to) {
+  const day = (iso) => new Date(Date.parse(iso) + 9 * 3600e3).toISOString().slice(0, 10);
+  const byDay = new Map();
+  for (let t = Date.parse(from) + 9 * 3600e3; t <= Date.parse(to) + 9 * 3600e3; t += 864e5) byDay.set(new Date(t).toISOString().slice(0, 10), { reports: 0, users: new Set() });
+  const all = new Set(), stores = new Set();
+  for (const r of reps) {
+    const x = byDay.get(day(r.createdAt));
+    if (x) { x.reports++; if (r.uid) x.users.add(r.uid); }
+    if (r.uid) all.add(r.uid);
+    if (r.storeId) stores.add(r.storeId);
+  }
+  const days = [...byDay.entries()].map(([date, x]) => ({ date, reports: x.reports, reporters: x.users.size })).slice(-30);
+  const body = { total: { reports: reps.length, reporters: all.size, stores: stores.size }, days };
+  let old = {};
+  try { old = JSON.parse(readFileSync(STATS_OUT, "utf8")); } catch { /* はじめて */ }
+  if (JSON.stringify({ total: old.total, days: old.days }) === JSON.stringify(body)) return;
+  writeFileSync(STATS_OUT, JSON.stringify({ updated: new Date().toISOString(), ...body }) + "\n");
+}
+
 async function main() {
+  mkdirSync("data", { recursive: true });
   await trends();
   let old = {};
   try { old = JSON.parse(readFileSync(OUT, "utf8")); } catch { /* はじめて */ }

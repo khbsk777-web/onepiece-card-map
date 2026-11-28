@@ -12,7 +12,7 @@ QUERY = ('[out:json][timeout:180];area["ISO3166-2"="JP-40"]->.a;('
          'nwr["shop"="electronics"]["name"~"ヨドバシ|Yodobashi",i](area.a););out center 20000;')
 KEEP = ["shop", "name", "name:ja", "name:en", "brand", "brand:ja", "brand:en", "branch", "branch:ja",
         "addr:full", "addr:province", "addr:city", "addr:suburb", "addr:quarter", "addr:neighbourhood",
-        "addr:block_number", "addr:housenumber"]
+        "addr:block_number", "addr:housenumber", "opening_hours"]
 
 def fetch():
     body = urllib.parse.urlencode({"data": QUERY}).encode()
