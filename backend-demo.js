@@ -116,6 +116,12 @@ export function createDemoBackend() {
       d.reports = d.reports.filter((x) => x.uid !== "me");
       d.user = null; save(); cb(null);
     },
+    async listLotteries() { return (d.lotteries || []).filter((x) => x.end >= Date.now()).sort((a, b) => a.end - b.end); },
+    async addLottery(x) { const v = { id: "l" + Date.now(), ...x, uid: "me", nickname: d.user?.nickname || "", flags: 0, createdAt: Date.now() }; (d.lotteries ||= []).push(v); save(); return v; },
+    async deleteLottery(id) { d.lotteries = (d.lotteries || []).filter((x) => x.id !== id); save(); },
+    async flagLottery(id) { const x = (d.lotteries || []).find((v) => v.id === id); if (x) x.flags++; save(); },
+    async claimInvite() {},
+    async myInviteCount() { return 0; },
     async myStats() {
       const mine = d.reports.filter((r) => r.uid === "me");
       return { reports: mine.length, likes: mine.reduce((a, r) => a + r.likes, 0) };

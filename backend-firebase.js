@@ -197,7 +197,7 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
       const u = auth.currentUser;
       const last = Date.parse(u?.metadata?.lastSignInTime || 0);
       if (!u || Date.now() - last > 5 * 60 * 1000) throw { code: "auth/requires-recent-login" };
-      for (const col of ["photos", "reports"]) {
+      for (const col of ["photos", "reports", "lotteries"]) {
         const snap = await F.getDocs(F.query(F.collection(db, col), F.where("uid", "==", u.uid)));
         for (const d of snap.docs) {
           if (col === "photos") await this.deletePhoto(d.id); else await F.deleteDoc(d.ref);
@@ -206,6 +206,45 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
       await F.deleteDoc(F.doc(db, "users", u.uid));
       profile = null;
       await A.deleteUser(u);
+    },
+    // ---- 抽選・予約 ----
+    async listLotteries() {
+      const q = F.query(F.collection(db, "lotteries"), F.where("end", ">=", F.Timestamp.now()), F.orderBy("end", "asc"), F.limit(300));
+      const snap = await F.getDocs(q);
+      return snap.docs.map((d) => { const x = d.data(); return { id: d.id, ...x, start: ts(x.start), end: ts(x.end), createdAt: ts(x.createdAt) }; });
+    },
+    async addLottery(x) {
+      const uid = auth.currentUser.uid;
+      const ref = F.doc(F.collection(db, "lotteries"));
+      const data = { storeId: x.storeId, kind: x.kind, title: x.title, how: x.how, start: F.Timestamp.fromMillis(x.start), end: F.Timestamp.fromMillis(x.end), uid, nickname: profile.nickname, flags: 0, createdAt: F.serverTimestamp() };
+      const b = F.writeBatch(db);
+      b.set(F.doc(db, "rateLimits", uid), { lastLottery: F.serverTimestamp() }, { merge: true });
+      b.set(ref, data);
+      await b.commit();
+      return { id: ref.id, ...x, uid, nickname: profile.nickname, flags: 0, createdAt: Date.now() };
+    },
+    async deleteLottery(id) { await F.deleteDoc(F.doc(db, "lotteries", id)); },
+    async flagLottery(id) {
+      const uid = auth.currentUser.uid;
+      const ref = F.doc(db, "lotteries", id);
+      const mark = F.doc(db, "lotteries", id, "flags", uid);
+      await F.runTransaction(db, async (tx) => {
+        const [p, m] = [await tx.get(ref), await tx.get(mark)];
+        if (!p.exists()) throw new Error("not-found");
+        if (m.exists()) throw new Error("already");
+        tx.set(mark, { createdAt: F.serverTimestamp() });
+        tx.update(ref, { flags: (p.data().flags || 0) + 1 });
+      });
+    },
+    // ---- 招待：はじめてニックネームを作った直後に1回だけ記録（失敗しても気にしない） ----
+    async claimInvite(by) {
+      const uid = auth.currentUser?.uid;
+      if (!uid || !by || by === uid) return;
+      await F.setDoc(F.doc(db, "invites", uid), { by, createdAt: F.serverTimestamp() });
+    },
+    async myInviteCount() {
+      const agg = await F.getAggregateFromServer(F.query(F.collection(db, "invites"), F.where("by", "==", auth.currentUser.uid)), { n: F.count() });
+      return agg.data().n || 0;
     },
     // ---- 運営者 ----
     async isAdmin() {

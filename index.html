@@ -37,6 +37,7 @@
 <div class="filters" role="toolbar" aria-label="絞り込み">
   <button id="stockListBtn" class="chip stock-list" type="button">📋 在庫リスト</button>
   <button id="hereBtn" class="chip here-chip" type="button">📍 いるお店で報告</button>
+  <button id="countdownChip" class="chip countdown-chip" type="button" hidden></button>
   <button id="itemQChip" class="chip on" type="button" hidden></button>
   <select id="placesMode" class="chip-select" aria-label="周辺のお店の表示"><option value="all">🏪 周辺：全部</option><option value="conv">🏪 コンビニだけ</option><option value="off">🙈 未登録をかくす</option></select>
   <button id="hideUnregBtn" class="chip" type="button" aria-pressed="false">🙈 未登録をかくす</button>
@@ -62,6 +63,7 @@
     <button class="x-today g-skip" type="button">スキップ</button>
   </div>
 </div>
+<div id="lotNews" class="release-banner lot-news" hidden><span role="button" tabindex="0"></span><button type="button" aria-label="閉じる">×</button></div>
 <div id="releaseBanner" class="release-banner" hidden><span role="button" tabindex="0"></span><button type="button" aria-label="閉じる">×</button></div>
 
 <div id="modeBanner" class="mode-banner" hidden>

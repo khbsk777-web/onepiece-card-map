@@ -1,6 +1,7 @@
 // トレジャーカードマップ（非公式） — 画面の動き
 // 安全のための決まり：ユーザーが入力した文字は必ず textContent で表示し、HTMLとして扱わない。
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
+import { getLang, setLang, startI18n } from "./i18n.js";
 
 // 他のサイトの中にこのアプリをうめこんで、だまして押させる攻撃（クリックジャッキング）を防ぐ
 if (window.top !== window.self) { try { window.top.location.replace(window.self.location.href); } catch { document.documentElement.style.display = "none"; } }
@@ -588,8 +589,10 @@ function openNickname(after) {
     if (/@/.test(n)) return toast("記号の @ は使えません");
     if (textProblem(n)) return toast(textProblem(n));
     if (NICK_NG.test(n)) return toast("運営・公式とまちがえやすい名前は使えません");
+    const firstTime = !S.user?.nickname;
     await S.backend.setNickname(n);
     S.user = { ...S.user, nickname: n };
+    if (firstTime) claimInviteOnce();
     updateAccountBtn(); toast("ニックネームを保存しました");
     after ? after() : closeSheet();
   });
@@ -607,8 +610,9 @@ async function openAccount() {
   del.onclick = openDeleteAccount;
   const titleLine = el("p", { class: "title-line", text: "称号を読み込み中…" });
   const badgeBox = el("div", { class: "badges" });
-  openSheet(el("h2", { text: S.user.nickname }), titleLine, el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt、開拓1店＝20pt" }), stat,
-    el("h3", { class: "mini-h", text: "🎖 バッジ" }), badgeBox, nick, out,
+  openSheet(el("h2", { text: S.user.nickname }), titleLine, el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt、開拓1店＝20pt、招待1人＝30pt" }), stat,
+    el("h3", { class: "mini-h", text: "🎖 バッジ" }), badgeBox,
+    el("button", { class: "btn sec", type: "button", text: "🎁 友だちを招待（30pt）", onclick: openInvite }), nick, out,
     el("button", { class: "btn ghost", type: "button", text: "🏆 月間ランキング・表彰", onclick: openRanking }),
     el("button", { class: "btn ghost", type: "button", text: "🏴 開拓者ランキング", onclick: openPioneers }),
     S.isAdmin ? el("button", { class: "btn sec admin", type: "button", text: "🛠 運営者の管理画面", onclick: openAdmin }) : null, aboutLink(), del,
@@ -1275,8 +1279,8 @@ async function openStore(id) {
     await S.backend.adminDeleteStore(s.id);
     S.stores = S.stores.filter((x) => x.id !== s.id); closeSheet(); render(); toast("お店を削除しました");
   });
-  loadTrends().then((t) => { trend.textContent = trendText(t[s.id]); });
-  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, hoursEl, fav, goRow, trend, reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), APP_URL), lineShareBtn(storeShareText(s, reps), APP_URL), adminDel);
+  loadTrends().then((t) => { trend.textContent = [trendText(t[s.id]), predictText(t[s.id])].filter(Boolean).join("\n"); });
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, hoursEl, fav, goRow, trend, reportBtn, await lotterySection(s), photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), APP_URL), lineShareBtn(storeShareText(s, reps), APP_URL), adminDel);
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged, S.stilled, S.goned] = await Promise.all(["like", "flag", "still", "gone"].map((k) => S.backend.myVotes(ids, k))); } catch {}
   }
@@ -1335,7 +1339,7 @@ function reportItem(r) {
       el("div", {}, el("span", { class: `badge ${r.status}`, text: STATUS[r.status] || "?" }), " ",
         el("b", { text: PRODUCTS[r.product] || "" }), itemLabel(r) ? el("span", { class: "meta", text: ` ${itemLabel(r)}` }) : null),
       el("span", { class: "meta", text: timeAgo(r.createdAt) })),
-    el("div", { class: "meta", text: [SALE[r.saleType], r.limit && LIMIT[r.limit], r.nickname || "名無し"].filter(Boolean).join("・") }),
+    el("div", { class: "meta", text: [SALE[r.saleType], r.limit && LIMIT[r.limit], nickWithTrust(r.nickname)].filter(Boolean).join("・") }),
     effStatus(r) !== r.status ? el("div", { class: "gone-note", text: "❌ もうなかったという声が多いです（売り切れたかも）" }) : null,
     checks,
     r.note ? el("p", { class: "note", text: r.note }) : null,
@@ -1631,6 +1635,11 @@ function openFeed() {
       el("button", { class: "btn sec", type: "button", text: "📋 在庫リスト", onclick: openNearby }),
       el("button", { class: "btn sec", type: "button", text: "❤️ お気に入り", onclick: openFavorites }),
       el("button", { class: "btn sec", type: "button", text: "📅 発売日", onclick: openCalendar }),
+      el("button", { class: "btn sec", type: "button", text: "🎟 抽選・予約", onclick: openLotteries }),
+      el("button", { class: "btn sec", type: "button", text: "🚗 まわる順番", onclick: openRoute }),
+      el("button", { class: "btn sec", type: "button", text: "🖼 今週のまとめ", onclick: openWeekly }),
+      el("button", { class: "btn sec", type: "button", text: "🎁 友だち招待", onclick: openInvite }),
+      el("a", { class: "btn sec", href: "area/index.html", style: "text-align:center;text-decoration:none", text: "🗾 都道府県ページ" }),
       el("button", { class: "btn sec", type: "button", text: "🏆 ランキング", onclick: openRanking }),
       el("button", { class: "btn sec", type: "button", text: "🏴 開拓者", onclick: openPioneers }),
       el("button", { class: "btn sec", type: "button", text: "📊 地域", onclick: openRegions }),
@@ -1641,6 +1650,7 @@ function openFeed() {
       el("button", { class: "btn sec", type: "button", text: "🕘 最近見た", onclick: openRecent }),
       el("button", { class: "btn sec", type: "button", text: `🔠 文字：${bigText() ? "大きい" : "ふつう"}`, onclick: (e) => { setBigText(!bigText()); e.currentTarget.textContent = `🔠 文字：${bigText() ? "大きい" : "ふつう"}`; } }),
       el("button", { class: "btn sec", type: "button", text: "❓ 使い方", onclick: () => { closeSheet(); openGuide(); } }),
+      el("button", { class: "btn sec", type: "button", text: langLabel(), onclick: toggleLang }),
       S.isAdmin ? el("button", { class: "btn sec admin", type: "button", text: "🛠 管理", onclick: openAdmin }) : null,
       releaseMode ? el("button", { class: "btn sec release", type: "button", text: "🎉 発売日モード", onclick: openReleaseDay }) : null),
     el("h3", { class: "mini-h", text: "🆕 新着の報告" }),
@@ -1652,6 +1662,304 @@ function openFeed() {
     }) : [el("p", { class: "small", text: "まだ報告がありません" })]),
     xShareBtn(`ワンピースカードの在庫を、みんなで報告し合う地図アプリ「トレジャーカードマップ」を使ってみてね🗺\n${TAGS}`, APP_URL),
     lineShareBtn("ワンピースカードの在庫を、みんなで報告し合える地図アプリ「トレジャーカードマップ」だよ🗺 無料で使えるよ", APP_URL));
+}
+
+// ============================================================
+// 追加機能（信頼度・週間まとめ画像・まわる順番・入荷予想・抽選予約・カウントダウン・招待・地域ページ）
+// ============================================================
+
+// ---------- 報告の信頼度（data/trust.json：「まだあった」が多い報告をよくする人） ----------
+async function loadTrust() {
+  try { const res = await fetch("data/trust.json", { cache: "no-cache" }); S.trust = res.ok ? (await res.json()).names || {} : {}; } catch { S.trust = {}; }
+}
+function nickWithTrust(n) {
+  const name = n || "名無し";
+  const lv = S.trust?.[name] || 0;
+  return lv >= 2 ? `${name} ☑️☑️高信頼` : lv === 1 ? `${name} ☑️信頼` : name;
+}
+
+// ---------- 在庫ありのお店（いちばん新しい報告で判断） ----------
+function inStockStores(maxAgeH = STALE_H) {
+  const seen = new Set(), ok = new Map();
+  const now = Date.now();
+  for (const r of S.reports) {
+    if ((r.flags || 0) >= HIDE_FLAGS) continue;
+    const k = r.storeId + "|" + r.product;
+    if (seen.has(k)) continue; // 新しい順にならんでいるので、最初の1件がいちばん新しい
+    seen.add(k);
+    if (["in", "low"].includes(effStatus(r)) && now - r.createdAt < maxAgeH * 3600e3 && !ok.has(r.storeId)) ok.set(r.storeId, r);
+  }
+  return [...ok.entries()].map(([id, r]) => ({ s: S.stores.find((x) => x.id === id), r })).filter((x) => x.s);
+}
+
+// ---------- 週間まとめ画像（端末の中で作る。サーバーには送らない） ----------
+function weeklyData() {
+  const reps = S.reports.filter((r) => (r.flags || 0) < HIDE_FLAGS);
+  const stock = reps.filter((r) => ["in", "low"].includes(r.status));
+  const pref = new Map(), item = new Map();
+  for (const r of stock) {
+    const s = S.stores.find((x) => x.id === r.storeId);
+    if (s?.pref) pref.set(s.pref, (pref.get(s.pref) || 0) + 1);
+    const nm = r.itemName || (r.setCode ? r.setCode : "");
+    if (nm) item.set(nm, (item.get(nm) || 0) + 1);
+  }
+  const top = (m, n) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
+  return { total: reps.length, stock: stock.length, prefs: top(pref, 5), items: top(item, 3) };
+}
+function drawWeekly(w) {
+  const W = 1200, H = 675;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  const font = (px, b = true) => `${b ? "700 " : ""}${px}px "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif`;
+  const grad = g.createLinearGradient(0, 0, W, H); grad.addColorStop(0, "#14213d"); grad.addColorStop(1, "#1d3557");
+  g.fillStyle = grad; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#ffd166"; g.fillRect(0, 0, W, 10);
+  const end = new Date(), start = new Date(Date.now() - 6 * 864e5);
+  const md = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+  g.fillStyle = "#ffd166"; g.font = font(30); g.fillText(`📅 ${md(start)}〜${md(end)}`, 60, 80);
+  g.fillStyle = "#fff"; g.font = font(58); g.fillText("今週のワンピカ入荷まとめ", 60, 160);
+  g.font = font(34, false); g.fillStyle = "#e5e7eb";
+  g.fillText(`報告 ${w.total}件 ／ ⭐在庫ありの報告 ${w.stock}件`, 60, 220);
+  g.fillStyle = "#ffd166"; g.font = font(34); g.fillText("🏆 入荷が多かった地域", 60, 300);
+  g.fillStyle = "#fff"; g.font = font(32, false);
+  (w.prefs.length ? w.prefs : [["まだ報告がありません", 0]]).forEach(([p, n], i) => g.fillText(`${i + 1}位　${p}${n ? `（${n}件）` : ""}`, 80, 350 + i * 46));
+  if (w.items.length) {
+    g.fillStyle = "#ffd166"; g.font = font(34); g.fillText("🔥 よく見つかった商品", 660, 300);
+    g.fillStyle = "#fff"; g.font = font(30, false);
+    w.items.forEach(([p, n], i) => g.fillText(`${p.slice(0, 14)}（${n}件）`, 680, 350 + i * 46));
+  }
+  g.fillStyle = "#e63946"; g.fillRect(0, H - 90, W, 90);
+  g.fillStyle = "#fff"; g.font = font(34); g.fillText("🗺 トレジャーカードマップ", 60, H - 32);
+  g.font = font(26, false); g.textAlign = "right"; g.fillText("treasure-card-map.github.io", W - 60, H - 34);
+  return c;
+}
+function openWeekly() {
+  const w = weeklyData();
+  const c = drawWeekly(w);
+  const img = el("img", { src: c.toDataURL("image/png"), alt: "今週のまとめ画像", style: "width:100%;border-radius:12px;margin:8px 0" });
+  const share = el("button", { class: "btn", type: "button", text: "📤 画像をシェア・保存" });
+  share.onclick = busy(share, async () => {
+    const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+    const file = new File([blob], "treasure-card-map-week.png", { type: "image/png" });
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], text: `今週のワンピカ入荷まとめ🗺\n${TAGS}` }); } catch { /* キャンセル */ }
+    } else {
+      const a = el("a", { href: URL.createObjectURL(blob), download: "treasure-card-map-week.png" });
+      document.body.append(a); a.click(); a.remove();
+      toast("画像を保存しました");
+    }
+  });
+  const top = w.prefs[0] ? `今週いちばん入荷の報告が多かったのは「${w.prefs[0][0]}」！` : "";
+  openSheet(el("h2", { text: "🖼 今週のまとめ" }),
+    el("p", { class: "sub", text: "最近7日間の報告から作った画像です。保存してXやLINEにのせてね。" }), img, share,
+    xShareBtn(`今週のワンピカ入荷まとめ🗺\n${top}\n報告${w.total}件・在庫あり${w.stock}件\n${TAGS}`, APP_URL),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+
+// ---------- まわる順番ナビ（近い順に在庫ありのお店をつなぐ） ----------
+const ROUTE_KM = 20, ROUTE_MAX = 8, ROUTE_NAV = 4; // 地図アプリに渡すのは4店まで（スマホの地図アプリの上限）
+function routeOrder(start, list) {
+  const left = [...list], out = [];
+  let cur = start;
+  while (left.length && out.length < ROUTE_MAX) {
+    let bi = 0, bd = Infinity;
+    left.forEach((x, i) => { const d = distM(cur, x.s); if (d < bd) { bd = d; bi = i; } });
+    const [x] = left.splice(bi, 1);
+    out.push({ ...x, legKm: bd / 1000 });
+    cur = x.s;
+  }
+  return out;
+}
+async function openRoute() {
+  let me;
+  try { me = await getPos(); } catch { return toast("まわる順番を出すには、位置情報を許可してね"); }
+  const near = inStockStores().filter((x) => distM(me, x.s) <= ROUTE_KM * 1000);
+  const route = routeOrder(me, near);
+  const nav = route.slice(0, ROUTE_NAV);
+  const url = nav.length ? "https://www.google.com/maps/dir/?api=1&travelmode=driving"
+    + `&origin=${me.lat},${me.lng}`
+    + `&destination=${nav[nav.length - 1].s.lat},${nav[nav.length - 1].s.lng}`
+    + (nav.length > 1 ? `&waypoints=${encodeURIComponent(nav.slice(0, -1).map((x) => `${x.s.lat},${x.s.lng}`).join("|"))}` : "") : "";
+  openSheet(el("h2", { text: "🚗 まわる順番ナビ" }),
+    el("p", { class: "sub", text: `現在地から${ROUTE_KM}km以内の「在庫あり」のお店を、近い順につなぎました。` }),
+    ...(route.length ? route.map((x, i) => el("div", { class: "feed-item", role: "button", tabindex: "0", onclick: () => { S.map.setView([x.s.lat, x.s.lng], 16); openStore(x.s.id); } },
+      el("div", { style: "display:flex;justify-content:space-between" }, el("b", { text: `${i + 1}. ${x.s.name}` }), el("span", { class: "meta", text: `+${x.legKm.toFixed(1)}km` })),
+      el("div", {}, el("span", { class: `badge ${effStatus(x.r)}`, text: STATUS[effStatus(x.r)] }), " ", PRODUCTS[x.r.product] || "", " ", el("span", { class: "meta", text: timeAgo(x.r.createdAt) }))))
+      : [el("p", { class: "small", text: `${ROUTE_KM}km以内に在庫ありの報告はまだありません。` })]),
+    url ? el("a", { class: "btn", href: url, target: "_blank", rel: "noopener noreferrer", style: "text-align:center;text-decoration:none;display:block",
+      text: `🧭 地図アプリで ${nav.length}店をまわる` }) : null,
+    route.length > ROUTE_NAV ? el("p", { class: "small", text: `地図アプリには最初の${ROUTE_NAV}店をわたします（スマホの地図アプリの上限のため）。` }) : null,
+    el("p", { class: "small", text: "⚠️ 在庫は売り切れていることもあります。運転中はスマホを操作しないでね。" }),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+
+// ---------- 入荷予想（最近60日の「入荷しやすい曜日・時間」から） ----------
+function predictText(t) {
+  if (!t || t.n < 3) return "";
+  const now = new Date(Date.now() + 9 * 3600e3);
+  const wd = now.getUTCDay(), h = now.getUTCHours();
+  const ratio = t.wd[wd] / (t.n / 7);
+  const level = ratio >= 1.5 ? "🔮🔮🔮 高い" : ratio >= 0.8 ? "🔮🔮 ふつう" : "🔮 低め";
+  const slot = h < 6 ? 4 : h < 11 ? 0 : h < 15 ? 1 : h < 19 ? 2 : 3;
+  const best = t.slot.indexOf(Math.max(...t.slot));
+  const later = best > slot && best !== 4 ? `（${SLOT[best]}に報告が多いお店です）` : "";
+  return `今日（${WD[wd]}曜日）の入荷しそう度：${level}${later}`;
+}
+
+// ---------- 抽選・予約ボード ----------
+const LOT_KIND = { lottery: "🎟 抽選", reserve: "📝 予約" };
+let lotCache = null, lotAt = 0;
+async function loadLotteries(force = false) {
+  if (!force && lotCache && Date.now() - lotAt < 5 * 60e3) return lotCache;
+  try { lotCache = await S.backend.listLotteries(); lotAt = Date.now(); } catch (e) { console.warn(e); lotCache = lotCache || []; }
+  return lotCache;
+}
+function md(t) { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; }
+function lotLeft(end) {
+  const h = (end - Date.now()) / 3600e3;
+  return h < 24 ? `⏰ 締切まであと${Math.max(1, Math.ceil(h))}時間` : `締切まであと${Math.ceil(h / 24)}日`;
+}
+function lotteryItem(x, { withStore = true } = {}) {
+  const s = S.stores.find((v) => v.id === x.storeId);
+  const mine = S.user && x.uid === (S.backend.isDemo ? "me" : S.user.uid);
+  const flag = el("button", { type: "button", text: "🚩 通報", disabled: mine });
+  flag.onclick = busy(flag, async () => {
+    if (!ready() || !confirmInline(flag)) return;
+    try { await S.backend.flagLottery(x.id); } catch (e) { if (e?.message !== "already") throw e; }
+    x.flags = (x.flags || 0) + 1; setTimeout(() => { flag.disabled = true; flag.textContent = "🚩 通報済み"; }); toast("通報しました。ありがとう！");
+  });
+  const del = mine || S.isAdmin ? el("button", { type: "button", text: mine ? "🗑 削除" : "🛠 削除（運営）" }) : null;
+  if (del) del.onclick = busy(del, async () => {
+    if (!confirmInline(del)) return;
+    await S.backend.deleteLottery(x.id); lotCache = (lotCache || []).filter((v) => v.id !== x.id); toast("削除しました"); closeSheet();
+  });
+  return el("div", { class: "report lot-item" },
+    el("div", { class: "row" }, el("div", {}, el("span", { class: "badge soon", text: LOT_KIND[x.kind] || "🎟" }), " ", el("b", { text: x.title })),
+      el("span", { class: "meta", text: lotLeft(x.end) })),
+    withStore && s ? el("div", { class: "meta lot-store", role: "button", tabindex: "0", text: `🏪 ${s.name}（${s.pref || ""}）`, onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } }) : null,
+    el("div", { class: "meta", text: `受付：${md(x.start)}〜${md(x.end)}・${nickWithTrust(x.nickname)}` }),
+    x.how ? el("p", { class: "note", text: x.how }) : null,
+    el("div", { class: "acts" }, flag, del));
+}
+async function openLotteries() {
+  const box = el("div", {}, el("p", { class: "small", text: "読み込み中…" }));
+  openSheet(el("h2", { text: "🎟 抽選・予約ボード" }),
+    el("p", { class: "sub", text: `${S.pref || "全国"}の、受付中・これからの抽選や予約です。お店のページから登録できます。` }), box,
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+  const list = (await loadLotteries(true)).filter((x) => (x.flags || 0) < HIDE_FLAGS).filter((x) => {
+    const s = S.stores.find((v) => v.id === x.storeId);
+    return s && (!S.pref || s.pref === S.pref);
+  });
+  box.replaceChildren(...(list.length ? list.map((x) => lotteryItem(x)) : [el("p", { class: "small", text: "いま登録されている抽選・予約はありません。お店で見つけたら登録してみよう！" })]));
+}
+function dateInput(v) { return el("input", { type: "date", value: new Date(v + 9 * 3600e3).toISOString().slice(0, 10) }); }
+function openLotteryForm(s) {
+  if (!ready()) return;
+  const kind = el("select", {}, el("option", { value: "lottery", text: "🎟 抽選" }), el("option", { value: "reserve", text: "📝 予約" }));
+  const title = el("input", { type: "text", maxLength: 40, placeholder: "例：最強の戦士 BOX抽選" });
+  const how = el("input", { type: "text", maxLength: 100, placeholder: "例：レジで応募用紙を記入。1人1口" });
+  const start = dateInput(Date.now()), end = dateInput(Date.now() + 7 * 864e5);
+  const save = el("button", { class: "btn", type: "button", text: "登録する" });
+  save.onclick = busy(save, async () => {
+    const t = clean(title.value, 40), h = clean(how.value, 100);
+    if (!t) return toast("タイトルを入れてね");
+    { const why = textProblem(t + " " + h); if (why) return toast(why); }
+    const st = Date.parse(start.value + "T00:00:00+09:00"), en = Date.parse(end.value + "T23:59:00+09:00");
+    if (!st || !en) return toast("日付を選んでね");
+    if (en < st) return toast("締切は受付開始より後にしてね");
+    if (en <= Date.now()) return toast("締切がもう過ぎています");
+    if (en > Date.now() + 89 * 864e5) return toast("締切は3か月以内にしてね");
+    if (st < Date.now() - 29 * 864e5) return toast("受付開始は1か月以内の日付にしてね");
+    const x = await S.backend.addLottery({ storeId: s.id, kind: kind.value, title: t, how: h, start: st, end: en });
+    lotCache = [...(lotCache || []), x].sort((a, b) => a.end - b.end);
+    toast("抽選・予約を登録しました。みんなに伝わります！");
+    openStore(s.id);
+  });
+  openSheet(el("h2", { text: "🎟 抽選・予約を登録" }), el("p", { class: "sub", text: s.name }),
+    el("label", { text: "種類" }), kind, el("label", { text: "タイトル（40文字まで）" }), title,
+    el("label", { text: "受付開始" }), start, el("label", { text: "締切" }), end,
+    el("label", { text: "応募の方法など（100文字まで・任意）" }), how,
+    el("p", { class: "small", text: "お店に貼ってあるお知らせなど、本当の情報だけ登録してね。電話番号やURLは書けません。1分に1回まで登録できます。" }),
+    save, el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: () => openStore(s.id) }));
+}
+async function lotterySection(s) {
+  const box = el("div", { class: "lot-sec" });
+  loadLotteries().then((list) => {
+    const mine = list.filter((x) => x.storeId === s.id && (x.flags || 0) < HIDE_FLAGS);
+    box.replaceChildren(
+      ...(mine.length ? [el("h3", { class: "mini-h", text: "🎟 このお店の抽選・予約" }), ...mine.map((x) => lotteryItem(x, { withStore: false }))] : []),
+      el("button", { class: "btn ghost", type: "button", text: "🎟 抽選・予約を登録", onclick: () => openLotteryForm(s) }));
+  });
+  return box;
+}
+// お気に入りのお店の抽選が48時間以内に締め切られるとき、開いたときにお知らせ
+async function showLotteryNews() {
+  if (!S.favs.size) return;
+  const soon = (await loadLotteries()).filter((x) => S.favs.has(x.storeId) && (x.flags || 0) < HIDE_FLAGS && x.end - Date.now() < 48 * 3600e3);
+  if (!soon.length) return;
+  const b = $("#lotNews");
+  const s = S.stores.find((v) => v.id === soon[0].storeId);
+  b.querySelector("span").textContent = `🎟 お気に入りのお店の「${soon[0].title}」は${lotLeft(soon[0].end).replace("⏰ ", "")}${soon.length > 1 ? `（ほか${soon.length - 1}件）` : ""}`;
+  b.querySelector("span").onclick = () => { b.hidden = true; if (soon.length === 1 && s) { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } else openLotteries(); };
+  b.querySelector("button").onclick = () => { b.hidden = true; };
+  b.hidden = false;
+}
+
+// ---------- 発売日カウントダウン（地図の上の小さいボタン） ----------
+async function showCountdown() {
+  const next = (await loadReleases()).map((x) => ({ ...x, d: daysUntil(x.date) })).filter((x) => x.d >= 0).sort((a, b) => a.d - b.d)[0];
+  const c = $("#countdownChip");
+  if (!next || !c) return;
+  c.textContent = next.d === 0 ? `🎉 今日発売：${next.code || next.name}` : `⏳ ${next.code || next.name}まであと${next.d}日`;
+  c.title = next.name;
+  c.hidden = false;
+  c.onclick = openCalendar;
+}
+
+// ---------- 友だち招待（招待した人・された人の両方に30pt） ----------
+const REF_KEY = "opmap-ref";
+function saveRefFromUrl() {
+  try {
+    const r = new URLSearchParams(location.search).get("ref");
+    if (r && /^[A-Za-z0-9]{10,128}$/.test(r)) localStorage.setItem(REF_KEY, r);
+  } catch { /* なにもしない */ }
+}
+async function claimInviteOnce() {
+  let r = "";
+  try { r = localStorage.getItem(REF_KEY) || ""; } catch { return; }
+  if (!r) return;
+  try { await S.backend.claimInvite(r); toast("🎁 招待でようこそ！報告すると、あなたと招待した人に30ptずつ入ります"); } catch { /* 古いアカウントなどは対象外 */ }
+  try { localStorage.removeItem(REF_KEY); } catch { /* なにもしない */ }
+}
+async function openInvite() {
+  if (!ready()) return;
+  const url = `${APP_URL}?ref=${encodeURIComponent(S.backend.isDemo ? "demo" : S.user.uid)}`;
+  const count = el("b", { text: "…" });
+  const copy = el("button", { class: "btn sec", type: "button", text: "🔗 招待リンクをコピー" });
+  copy.onclick = async () => { try { await navigator.clipboard.writeText(url); toast("コピーしました"); } catch { toast("コピーできませんでした"); } };
+  const text = "ワンピースカードの在庫を地図でみんなで報告し合えるアプリ「トレジャーカードマップ」に招待するよ🗺 このリンクから登録して報告すると、2人ともポイントがもらえる！";
+  openSheet(el("h2", { text: "🎁 友だちを招待" }),
+    el("p", { class: "sub", text: "このリンクから登録した友だちが、その月に1回報告すると、あなたと友だちに30ptずつ入ります（1か月10人まで）。" }),
+    el("p", {}, "これまでに招待した人：", count, "人"),
+    copy, xShareBtn(`${text}\n${TAGS}`, url), lineShareBtn(text, url),
+    el("p", { class: "small", text: "※ リンクには、あなたを見分けるための番号（ユーザーID）が入ります。メールアドレスは入りません。" }),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openAccount }));
+  try { count.textContent = await S.backend.myInviteCount(); } catch { count.textContent = "-"; }
+}
+
+// ---------- 英語表示の切りかえ ----------
+function langLabel() { return "🌐 English"; } // 英語表示のときは「🌐 日本語」に置きかわる
+function toggleLang() { setLang(getLang() === "en" ? "ja" : "en"); location.reload(); }
+
+// ---------- 地域ページ（?pref=福岡県 で開いたら、その県にしぼる） ----------
+function applyPrefFromUrl() {
+  try {
+    const p = new URLSearchParams(location.search).get("pref");
+    if (!p || !PREFS.includes(p)) return;
+    addPrefOption(p); S.pref = p; $("#prefFilter").value = p; render();
+    const list = S.stores.filter((s) => s.pref === p);
+    if (list.length) S.map.fitBounds(list.map((s) => [s.lat, s.lng]), { maxZoom: 12, padding: [30, 30] });
+  } catch { /* 読めないリンクは無視 */ }
 }
 
 // ---------- 絞り込み ----------
@@ -1711,6 +2019,7 @@ async function loadData() {
 
 // ---------- 起動 ----------
 async function main() {
+  startI18n();
   initMap();
   initFilters();
   // 現在地：青い点で表示（ボタンを押したとき＋アプリを開いたとき）
@@ -1766,6 +2075,9 @@ async function main() {
   $("#stockListBtn").onclick = openNearby;
   $("#hereBtn").onclick = openHere;
   $("#itemQChip").onclick = () => { S.itemQ = ""; syncItemChip(); render(); };
+  saveRefFromUrl();
+  showCountdown();
+  loadTrust();
   setBigText(bigText());
   applyTheme();
   window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
@@ -1798,6 +2110,8 @@ async function main() {
   loadPrefData();
   await loadData();
   showFavNews();
+  applyPrefFromUrl();
+  showLotteryNews();
   // シェアされたリンク（?s=お店ID）から開いたら、そのお店を表示
   try {
     const sid = new URLSearchParams(location.search).get("s");

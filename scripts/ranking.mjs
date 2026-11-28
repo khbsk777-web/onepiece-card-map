@@ -9,7 +9,8 @@ const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/
 const OUT = "data/ranking.json";
 const TOP = 30;
 const HIDE_FLAGS = 3;
-const PT = { report: 10, like: 5, pioneer: 20 };
+const PT = { report: 10, like: 5, pioneer: 20, invite: 30 };
+const INVITE_CAP = 10; // 1人が1か月に招待ポイントをもらえるのは10人まで
 
 const val = (f) => f == null ? null : f.stringValue ?? f.timestampValue ?? (f.integerValue != null ? Number(f.integerValue) : f.doubleValue ?? null);
 
@@ -33,7 +34,7 @@ async function readAll(collection, fields, from, to) {
     if (!res.ok) throw new Error(`${collection} を読めませんでした: ${res.status} ${await res.text()}`);
     const docs = (await res.json()).filter((x) => x.document).map((x) => x.document);
     for (const d of docs) {
-      const o = {};
+      const o = { _id: d.name.split("/").pop() };
       for (const f of fields) o[f] = val(d.fields?.[f]);
       out.push(o);
     }
@@ -55,7 +56,7 @@ async function rank(y, m) {
   const stores = await readAll("stores", ["createdBy", "pioneer", "createdAt"], from, to);
   const users = new Map();
   const u = (id) => {
-    if (!users.has(id)) users.set(id, { name: "", reports: 0, likes: 0, pioneer: 0 });
+    if (!users.has(id)) users.set(id, { name: "", reports: 0, likes: 0, pioneer: 0, invites: 0 });
     return users.get(id);
   };
   for (const r of reports) {
@@ -70,8 +71,17 @@ async function rank(y, m) {
     x.pioneer++;
     if (!x.name) x.name = s.pioneer;
   }
+  // 招待：この月に招待された人が、この月に1回以上報告したら、招待した人と招待された人の両方にポイント
+  const invites = await readAll("invites", ["by", "createdAt"], from, to);
+  for (const iv of invites) {
+    const newbie = users.get(iv._id);
+    if (!iv.by || !newbie || newbie.reports < 1 || iv.by === iv._id) continue;
+    const host = u(iv.by);
+    if (host.invites >= INVITE_CAP) continue;
+    host.invites++; newbie.invites++;
+  }
   const list = [...users.values()].filter((x) => x.name)
-    .map((x) => ({ name: x.name, pt: x.reports * PT.report + x.likes * PT.like + x.pioneer * PT.pioneer, reports: x.reports, likes: x.likes, pioneer: x.pioneer }))
+    .map((x) => ({ name: x.name, pt: x.reports * PT.report + x.likes * PT.like + x.pioneer * PT.pioneer + x.invites * PT.invite, reports: x.reports, likes: x.likes, pioneer: x.pioneer, invites: x.invites }))
     .filter((x) => x.pt > 0)
     .sort((a, b) => b.pt - a.pt || b.reports - a.reports);
   console.log(`${key(y, m)}: 報告${reports.length}件・新しいお店${stores.length}店・参加者${list.length}人`);
@@ -83,8 +93,9 @@ const TREND_OUT = "data/trends.json";
 async function trends() {
   const to = new Date().toISOString();
   const from = new Date(Date.now() - 60 * 864e5).toISOString();
-  const reps = await readAll("reports", ["storeId", "status", "flags", "uid", "createdAt"], from, to);
+  const reps = await readAll("reports", ["storeId", "status", "flags", "uid", "nickname", "still", "gone", "createdAt"], from, to);
   await stats(reps, from, to);
+  await trust(reps);
   const stores = {};
   for (const r of reps) {
     if (!["in", "low"].includes(r.status) || (r.flags || 0) >= HIDE_FLAGS || !r.storeId) continue;
@@ -123,9 +134,121 @@ async function stats(reps, from, to) {
   writeFileSync(STATS_OUT, JSON.stringify({ updated: new Date().toISOString(), ...body }) + "\n");
 }
 
+
+// ---- 報告の信頼度（最近60日）：「まだあった」が多い報告をたくさんした人に ☑️ ----
+// 出力はニックネームとレベル（1か2）だけ
+const TRUST_OUT = "data/trust.json";
+async function trust(reps) {
+  const by = new Map();
+  for (const r of reps) {
+    if (!r.uid || !r.nickname) continue;
+    const x = by.get(r.uid) || { name: r.nickname, good: 0, bad: 0 };
+    x.name = r.nickname;
+    const still = r.still || 0, gone = r.gone || 0;
+    if ((r.flags || 0) >= HIDE_FLAGS || gone > still) x.bad++;
+    else if (still >= 1) x.good++;
+    by.set(r.uid, x);
+  }
+  const names = {};
+  for (const x of by.values()) {
+    if (x.good >= 10 && x.bad * 5 <= x.good) names[x.name] = 2;
+    else if (x.good >= 3 && x.bad * 3 <= x.good) names[x.name] = Math.max(names[x.name] || 0, 1);
+  }
+  console.log(`信頼度：☑️ ${Object.keys(names).length}人`);
+  let old = {};
+  try { old = JSON.parse(readFileSync(TRUST_OUT, "utf8")); } catch { /* はじめて */ }
+  if (JSON.stringify(old.names) === JSON.stringify(names)) return;
+  writeFileSync(TRUST_OUT, JSON.stringify({ updated: new Date().toISOString(), names }) + "\n");
+}
+
+// ---- 都道府県ごとのページ（Google検索で見つけてもらうため。area/1.html〜area/47.html） ----
+const SITE = "https://treasure-card-map.github.io/";
+const PREFS = "北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県".split(" ");
+const STATUS_JA = { in: "⭐ 在庫あり", low: "⭐ 残りわずか" };
+const PRODUCT_JA = { booster: "ブースターパック", extra: "エクストラブースター", premium: "プレミアムブースター", starter: "スタートデッキ", other: "その他" };
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function jst(iso) { const t = new Date(Date.parse(iso) + 9 * 3600e3); return `${t.getUTCMonth() + 1}/${t.getUTCDate()} ${String(t.getUTCHours()).padStart(2, "0")}:${String(t.getUTCMinutes()).padStart(2, "0")}`; }
+function page(title, desc, path, body) {
+  return `<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'unsafe-inline'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<link rel="canonical" href="${SITE}${path}">
+<meta property="og:type" content="website"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${SITE}${path}"><meta property="og:image" content="${SITE}og.png"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../icons/favicon-48.png" type="image/png">
+<style>body{font-family:system-ui,-apple-system,"Hiragino Sans",sans-serif;margin:0;background:#f6f7fb;color:#14213d;line-height:1.6}
+header{background:#14213d;color:#fff;padding:14px 16px}header a{color:#ffd166;text-decoration:none;font-weight:700}
+main{max-width:720px;margin:0 auto;padding:16px}h1{font-size:1.3rem}h2{font-size:1.05rem;margin-top:24px}
+.cta{display:block;text-align:center;background:#e63946;color:#fff;padding:14px;border-radius:12px;font-weight:700;text-decoration:none;margin:16px 0}
+.row{background:#fff;border-radius:10px;padding:10px 12px;margin:8px 0;box-shadow:0 1px 3px #0001}.meta{color:#667;font-size:.85rem}
+.prefs{display:flex;flex-wrap:wrap;gap:8px}.prefs a{background:#fff;padding:6px 10px;border-radius:8px;text-decoration:none;color:#14213d;box-shadow:0 1px 3px #0001}
+footer{font-size:.8rem;color:#667;padding:16px;text-align:center}</style>
+</head><body><header><a href="${SITE}">🗺 トレジャーカードマップ</a></header><main>
+${body}
+</main><footer>トレジャーカードマップは、ファンが作った非公式のアプリです。情報はユーザーの報告で、正しさは保証できません。<br><a href="../about.html">このアプリについて</a></footer></body></html>
+`;
+}
+async function areaPages() {
+  const since = new Date(Date.now() - 7 * 864e5).toISOString();
+  const now = new Date(Date.now() + 60e3).toISOString();
+  const [reps, stores] = await Promise.all([
+    readAll("reports", ["storeId", "status", "flags", "still", "gone", "product", "itemName", "createdAt"], since, now),
+    readAll("stores", ["name", "pref", "createdAt"], "2000-01-01T00:00:00Z", now),
+  ]);
+  const storeById = new Map(stores.map((x) => [x._id, x]));
+  // お店ごとに一番新しい報告だけ
+  const latest = new Map();
+  for (const r of reps) {
+    if ((r.flags || 0) >= HIDE_FLAGS) continue;
+    const k = r.storeId + "|" + r.product;
+    const o = latest.get(k);
+    if (!o || o.createdAt < r.createdAt) latest.set(k, r);
+  }
+  mkdirSync("area", { recursive: true });
+  const links = [];
+  let changed = 0;
+  PREFS.forEach((pref, i) => {
+    const n = i + 1;
+    const inStock = [...latest.values()].filter((r) => ["in", "low"].includes(r.status) && (r.gone || 0) <= (r.still || 0) && storeById.get(r.storeId)?.pref === pref)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 50);
+    const storeCount = stores.filter((x) => x.pref === pref).length;
+    const title = `${pref}のワンピースカード在庫・入荷情報｜トレジャーカードマップ`;
+    const desc = `${pref}のコンビニ・本屋・家電量販店などで報告された、ワンピースカードの在庫・入荷情報（最近7日間）。みんなで報告し合う無料の地図アプリ。`;
+    const rows = inStock.length ? inStock.map((r) => {
+      const st = storeById.get(r.storeId);
+      return `<div class="row"><b>${esc(st.name)}</b><div>${STATUS_JA[r.status]}・${esc(PRODUCT_JA[r.product] || "")}${r.itemName ? "「" + esc(r.itemName) + "」" : ""}</div><div class="meta">${jst(r.createdAt)} の報告</div></div>`;
+    }).join("\n") : `<p>最近7日間の「在庫あり」の報告はまだありません。見つけたら最初に報告してみよう！</p>`;
+    const body = `<h1>${esc(pref)}のワンピースカード在庫情報</h1>
+<p>${esc(pref)}で登録されたお店：${storeCount}店。最近7日間に「在庫あり」と報告されたお店：${inStock.length}店。</p>
+<a class="cta" href="${SITE}?pref=${encodeURIComponent(pref)}">🗺 地図で${esc(pref)}の在庫を見る</a>
+<h2>最近の在庫ありの報告</h2>
+${rows}
+<h2>ほかの地域</h2><p><a href="index.html">都道府県の一覧へ</a></p>`;
+    const html = page(title, desc, `area/${n}.html`, body);
+    const file = `area/${n}.html`;
+    let old = "";
+    try { old = readFileSync(file, "utf8"); } catch { /* はじめて */ }
+    if (old !== html) { writeFileSync(file, html); changed++; }
+    links.push({ n, pref, count: inStock.length });
+  });
+  const idx = page("都道府県別 ワンピースカード在庫情報｜トレジャーカードマップ", "47都道府県ごとの、ワンピースカードの在庫・入荷情報の一覧。", "area/index.html",
+    `<h1>都道府県別のワンピースカード在庫情報</h1><a class="cta" href="${SITE}">🗺 地図アプリを開く</a><div class="prefs">${links.map((x) => `<a href="${x.n}.html">${esc(x.pref)}${x.count ? `（${x.count}）` : ""}</a>`).join("")}</div>`);
+  let oldIdx = "";
+  try { oldIdx = readFileSync("area/index.html", "utf8"); } catch { /* はじめて */ }
+  if (oldIdx !== idx) { writeFileSync("area/index.html", idx); changed++; }
+  const urls = ["", "about.html", "area/index.html", ...links.map((x) => `area/${x.n}.html`)];
+  writeFileSync("sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${SITE}${u}</loc></url>`).join("\n")}\n</urlset>\n`);
+  writeFileSync("robots.txt", `User-agent: *\nAllow: /\nSitemap: ${SITE}sitemap.xml\n`);
+  console.log(`地域ページ：${changed}ページ更新`);
+}
+
 async function main() {
   mkdirSync("data", { recursive: true });
   await trends();
+  await areaPages();
   let old = {};
   try { old = JSON.parse(readFileSync(OUT, "utf8")); } catch { /* はじめて */ }
   const now = new Date(Date.now() + 9 * 3600e3); // 日本時間

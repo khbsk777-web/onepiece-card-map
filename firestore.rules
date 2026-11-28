@@ -63,8 +63,8 @@ service cloud.firestore {
       }
       allow read: if isMe(uid);
       allow create, update: if verified() && isMe(uid)
-        && request.resource.data.keys().hasOnly(['lastReport', 'lastStore', 'lastPhoto'])
-        && stampOk('lastReport', 5) && stampOk('lastStore', 5) && stampOk('lastPhoto', 60);
+        && request.resource.data.keys().hasOnly(['lastReport', 'lastStore', 'lastPhoto', 'lastLottery'])
+        && stampOk('lastReport', 5) && stampOk('lastStore', 5) && stampOk('lastPhoto', 60) && stampOk('lastLottery', 60);
       allow delete: if false;
     }
 
@@ -241,6 +241,57 @@ service cloud.firestore {
              == (exists(/databases/$(database)/documents/goings/$(bucketId)) ? get(/databases/$(database)/documents/goings/$(bucketId)).data.n : 0) + 1;
         allow update, delete: if false;
       }
+    }
+
+    // ---------- 抽選・予約の情報（だれでも見られる。登録はメール確認済みの人が1分に1回） ----------
+    match /lotteries/{lotId} {
+      function d() { return request.resource.data; }
+      allow read: if true;
+      allow create: if verified()
+        && exactKeys(d(), ['storeId', 'kind', 'title', 'how', 'start', 'end', 'uid', 'nickname', 'flags', 'createdAt'])
+        && d().uid == request.auth.uid
+        && d().nickname == myNickname()
+        && d().storeId is string && exists(/databases/$(database)/documents/stores/$(d().storeId))
+        && d().kind in ['lottery', 'reserve']
+        && str(d().title, 1, 40) && okText(d().title)
+        && str(d().how, 0, 100) && okText(d().how)
+        && d().start is timestamp && d().end is timestamp
+        && d().start <= d().end
+        && d().end > request.time
+        && d().end < request.time + duration.value(90, 'd')
+        && d().start > request.time - duration.value(30, 'd')
+        && d().flags == 0
+        && d().createdAt == request.time
+        && stamped('lastLottery');
+      // 他人ができるのは通報の+1だけ（1人1回）
+      allow update: if verified()
+        && d().diff(resource.data).affectedKeys().hasOnly(['flags'])
+        && d().flags == resource.data.flags + 1
+        && resource.data.uid != request.auth.uid
+        && !exists(/databases/$(database)/documents/lotteries/$(lotId)/flags/$(request.auth.uid))
+        && existsAfter(/databases/$(database)/documents/lotteries/$(lotId)/flags/$(request.auth.uid));
+      allow delete: if (verified() && resource.data.uid == request.auth.uid) || isAdmin();
+      match /flags/{uid} {
+        allow read: if isMe(uid);
+        allow create: if verified() && isMe(uid)
+          && exactKeys(request.resource.data, ['createdAt']) && request.resource.data.createdAt == request.time
+          && getAfter(/databases/$(database)/documents/lotteries/$(lotId)).data.flags
+             == get(/databases/$(database)/documents/lotteries/$(lotId)).data.flags + 1;
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------- 招待（はじめてニックネームを作ってから1日以内に1回だけ。だれに招待されたか） ----------
+    match /invites/{uid} {
+      allow read: if true;
+      allow create: if verified() && isMe(uid)
+        && exactKeys(request.resource.data, ['by', 'createdAt'])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.by is string && request.resource.data.by.size() <= 128
+        && request.resource.data.by != request.auth.uid
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.by))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.createdAt > request.time - duration.value(1, 'd');
+      allow update, delete: if false;
     }
 
     // それ以外の場所はすべて禁止

@@ -3,7 +3,7 @@
 //       npx firebase emulators:exec --only firestore --project demo-op "node tests/rules.test.mjs"
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp, collection } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, writeBatch, serverTimestamp, collection } from "firebase/firestore";
 
 const env = await initializeTestEnvironment({
   projectId: "demo-op",
@@ -138,6 +138,31 @@ await t("ないお店の「これから行く」は拒否", assertFails((async (
   b.set(doc(erin, "goings", id, "marks", "erin"), { createdAt: serverTimestamp() });
   return b.commit();
 })()));
+
+// ---- 抽選・予約 ----
+const DAY = 864e5;
+const lot = (over = {}) => ({ storeId: "s1", kind: "lottery", title: "最強の戦士 抽選", how: "レジで応募", start: new Date(), end: new Date(Date.now() + 3 * DAY), uid: "erin", nickname: "エリン", flags: 0, createdAt: serverTimestamp(), ...over });
+const postLot = (data) => { const b = writeBatch(erin); b.set(doc(erin, "rateLimits/erin"), { lastLottery: serverTimestamp() }, { merge: true }); b.set(doc(collection(erin, "lotteries")), data); return b.commit(); };
+await t("連投制限なしの抽選登録は拒否", assertFails(setDoc(doc(erin, "lotteries/x"), lot())));
+await t("終わった抽選は登録できない", assertFails(postLot(lot({ end: new Date(Date.now() - DAY) }))));
+await t("4か月先の締切は拒否", assertFails(postLot(lot({ end: new Date(Date.now() + 120 * DAY) }))));
+await t("抽選の説明に電話番号は拒否", assertFails(postLot(lot({ how: "電話 03-1234-5678" }))));
+await t("他人の名前の抽選登録は拒否", assertFails(postLot(lot({ nickname: "ボブ" }))));
+await t("決まっていない種類は拒否", assertFails(postLot(lot({ kind: "sale" }))));
+await t("正しい抽選登録はOK", assertSucceeds(postLot(lot())));
+await t("1分以内の抽選の連続登録は拒否", assertFails(postLot(lot())));
+await t("抽選はだれでも見られる", assertSucceeds(getDocs(collection(guest, "lotteries"))));
+// ---- 招待 ----
+await env.withSecurityRulesDisabled(async (c) => {
+  await setDoc(doc(c.firestore(), "users/old1"), { nickname: "古参", createdAt: new Date(Date.now() - 5 * DAY) });
+  await setDoc(doc(c.firestore(), "users/bob"), { nickname: "ボブ", createdAt: new Date() });
+});
+await t("自分で自分を招待は拒否", assertFails(setDoc(doc(erin, "invites/erin"), { by: "erin", createdAt: serverTimestamp() })));
+await t("いない人からの招待は拒否", assertFails(setDoc(doc(erin, "invites/erin"), { by: "nobody", createdAt: serverTimestamp() })));
+await t("他人の招待記録は作れない", assertFails(setDoc(doc(erin, "invites/bob"), { by: "erin", createdAt: serverTimestamp() })));
+await t("古いアカウントは招待を受けられない", assertFails(setDoc(doc(verified("old1"), "invites/old1"), { by: "bob", createdAt: serverTimestamp() })));
+await t("新しい人は招待を1回受けられる", assertSucceeds(setDoc(doc(erin, "invites/erin"), { by: "bob", createdAt: serverTimestamp() })));
+await t("招待を2回目に書きかえは拒否", assertFails(setDoc(doc(erin, "invites/erin"), { by: "old1", createdAt: serverTimestamp() })));
 await t("想定外の場所は読めない", assertFails(getDoc(doc(guest, "admin/secret"))));
 
 for (const r of results) console.log(r.join(" "));
