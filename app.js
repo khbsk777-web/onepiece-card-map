@@ -1,7 +1,7 @@
 // トレジャーカードマップ（非公式） — 画面の動き
 // 安全のための決まり：ユーザーが入力した文字は必ず textContent で表示し、HTMLとして扱わない。
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
-import { getLang, setLang, startI18n } from "./i18n.js?v=3";
+import { getLang, setLang, startI18n } from "./i18n.js?v=4";
 
 // 他のサイトの中にこのアプリをうめこんで、だまして押させる攻撃（クリックジャッキング）を防ぐ
 if (window.top !== window.self) { try { window.top.location.replace(window.self.location.href); } catch { document.documentElement.style.display = "none"; } }
@@ -1948,7 +1948,7 @@ async function openInvite() {
 }
 
 // ---------- 英語表示の切りかえ ----------
-function langLabel() { return "🌐 English"; } // 英語表示のときは「🌐 日本語」に置きかわる
+function langLabel() { return getLang() === "en" ? "🌐 日本語" : "🌐 English"; }
 function toggleLang() { setLang(getLang() === "en" ? "ja" : "en"); location.reload(); }
 
 // ---------- 地域ページ（?pref=福岡県 で開いたら、その県にしぼる） ----------

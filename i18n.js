@@ -72,7 +72,7 @@ const D = {
   "まだ在庫の報告がありません。見かけたら最初の報告をしてみよう！": "No stock reports yet. Be the first to report!",
   "✅ まだあった": "✅ Still there", "❌ もうなかった": "❌ Gone", "役に立った": "Helpful", "BOX": "Box",
   "表示：自動": "Theme: Auto", "🔠 文字：ふつう": "🔠 Text: normal", "🔠 文字：大きい": "🔠 Text: large",
-  "🔥 ヒート：オン": "🔥 Heatmap: on", "🔥 ヒート：オフ": "🔥 Heatmap: off", "🌐 English": "🌐 日本語",
+  "🔥 ヒート：オン": "🔥 Heatmap: on", "🔥 ヒート：オフ": "🔥 Heatmap: off",
   "住所未登録": "No address",
 };
 // 数字などが入る文
