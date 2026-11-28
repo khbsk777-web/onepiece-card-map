@@ -669,13 +669,27 @@ async function openNearby() {
     return openSheet(el("h2", { text: "📍 近くの在庫あり" }), el("p", { class: "sub", text: "位置情報を許可すると、近い順に表示できます。" }),
       el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
   }
-  const now = Date.now();
-  const list = S.stores.map((s) => ({ s, r: latestFor(S.reports, s.id, S.product), d: distM(me, s) / 1000 }))
-    .filter((x) => x.r && ["in", "low"].includes(effStatus(x.r)) && now - x.r.createdAt < STALE_H * 3600e3 && x.d <= 30)
-    .sort((a, b) => a.d - b.d).slice(0, 30);
+  // 探す範囲：10kmから300kmまで10km単位（はじめは30km。前に選んだ範囲を覚えておく）
+  let km = 30;
+  try { km = Math.min(300, Math.max(10, Number(localStorage.getItem("opmap-near-km")) || 30)); } catch { /* なにもしない */ }
+  const sel = el("select", { class: "range-sel", "aria-label": "探す範囲" },
+    ...Array.from({ length: 30 }, (_, i) => (i + 1) * 10).map((v) => el("option", { value: String(v), text: `${v}km以内`, selected: v === km })));
+  sel.value = String(km);
+  const box = el("div");
+  const draw = () => {
+    const now = Date.now();
+    const list = S.stores.map((s) => ({ s, r: latestFor(S.reports, s.id, S.product), d: distM(me, s) / 1000 }))
+      .filter((x) => x.r && ["in", "low"].includes(effStatus(x.r)) && now - x.r.createdAt < STALE_H * 3600e3 && x.d <= km)
+      .sort((a, b) => a.d - b.d);
+    box.replaceChildren(
+      el("p", { class: "meta", text: `${list.length}件${list.length > 50 ? "（近い50件を表示）" : ""}` }),
+      ...(list.length ? list.slice(0, 50).map((x) => storeRow(x.s, x.r, x.d)) : [el("p", { class: "small", text: `${km}km以内の在庫情報はまだありません。範囲を広げるか、見つけたら報告してね！` })]));
+  };
+  sel.onchange = () => { km = Number(sel.value); try { localStorage.setItem("opmap-near-km", String(km)); } catch { /* なにもしない */ } draw(); };
+  draw();
   openSheet(el("h2", { text: "📍 近くの在庫あり" }),
-    el("p", { class: "sub", text: `現在地から30km以内・最近${STALE_H}時間の「在庫あり」「残りわずか」を近い順に表示` }),
-    ...(list.length ? list.map((x) => storeRow(x.s, x.r, x.d)) : [el("p", { class: "small", text: "近くの在庫情報はまだありません。見つけたら報告してね！" })]),
+    el("p", { class: "sub", text: `最近${STALE_H}時間の「在庫あり」「残りわずか」を近い順に表示` }),
+    el("label", { text: "現在地からの範囲" }), sel, box,
     el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
 }
 function openFavorites() {
