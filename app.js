@@ -1120,7 +1120,7 @@ function updateAccountBtn() {
 
 // ---------- お店のパネル ----------
 // ---------- Xでシェア ----------
-const APP_URL = "https://khbsk777-web.github.io/onepiece-card-map/";
+const APP_URL = "https://treasure-card-map.github.io/";
 const TAGS = "#ワンピースカード #ワンピカ #トレジャーカードマップ";
 function xShareBtn(text, url) {
   const href = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;

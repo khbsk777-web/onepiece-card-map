@@ -29,7 +29,7 @@ def fetch(code):
     for attempt in range(2):
         for url in SERVERS:
             try:
-                req = urllib.request.Request(url, data=body, headers={"User-Agent": "onepiece-card-map (github.com/khbsk777-web/onepiece-card-map)"})
+                req = urllib.request.Request(url, data=body, headers={"User-Agent": "onepiece-card-map (github.com/treasure-card-map/treasure-card-map.github.io)"})
                 with urllib.request.urlopen(req, timeout=200) as r:
                     return json.load(r)["elements"]
             except Exception as e:  # 次のサーバー・次の回へ
