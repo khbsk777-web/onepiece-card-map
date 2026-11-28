@@ -1,0 +1,11 @@
+{
+  "note": "発売日カレンダー。公式サイト（onepiece-cardgame.com/products/）で確認した日付だけを書く。新しい商品が発表されたらここに追加する。",
+  "checked": "2026-11-28",
+  "items": [
+    { "date": "2026-12-19", "name": "スタートデッキ 砂漠の王女と海賊たち", "code": "ST-37", "product": "starter" },
+    { "date": "2026-12-19", "name": "スタートデッキ バロックワークス", "code": "ST-38", "product": "starter" },
+    { "date": "2027-01-30", "name": "エクストラブースター EAST BLUE", "code": "EB-06", "product": "extra" },
+    { "date": "2027-02-27", "name": "ブースターパック 応答せよ、世界", "code": "OP-19", "product": "booster" },
+    { "date": "2027-04-24", "name": "プレミアムエクストラブースター 夢の一枚", "code": "PEB-01", "product": "premium" }
+  ]
+}

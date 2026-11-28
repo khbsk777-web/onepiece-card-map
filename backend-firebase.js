@@ -1,6 +1,8 @@
 // 本番用：Firebase（ログイン＋データベース）につなぐ部分
 // 守りの本体は firestore.rules。ここはその決まりに合わせてデータを送るだけ。
 const V = "10.12.2";
+// 1人1回だけ押せるボタン：[報告の数の項目, 押した印を置く場所]
+const VOTE = { like: ["likes", "likes"], flag: ["flags", "flags"], still: ["still", "stills"], gone: ["gone", "gones"] };
 const base = `https://www.gstatic.com/firebasejs/${V}`;
 
 export async function createFirebaseBackend(config, appCheckSiteKey) {
@@ -135,12 +137,12 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
     async vote(id, kind) {
       const uid = auth.currentUser.uid;
       const rRef = F.doc(db, "reports", id);
-      const mark = F.doc(db, "reports", id, kind === "like" ? "likes" : "flags", uid);
+      const [field, sub] = VOTE[kind];
+      const mark = F.doc(db, "reports", id, sub, uid);
       await F.runTransaction(db, async (tx) => {
         const [r, m] = [await tx.get(rRef), await tx.get(mark)];
         if (!r.exists()) throw new Error("not-found");
         if (m.exists()) throw new Error("already");
-        const field = kind === "like" ? "likes" : "flags";
         tx.set(mark, { createdAt: F.serverTimestamp() });
         tx.update(rRef, { [field]: (r.data()[field] || 0) + 1 });
       });
@@ -186,7 +188,7 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
     async myVotes(ids, kind) {
       const uid = auth.currentUser?.uid;
       if (!uid) return new Set();
-      const sub = kind === "like" ? "likes" : "flags";
+      const sub = VOTE[kind][1];
       const res = await Promise.all(ids.map((id) => F.getDoc(F.doc(db, "reports", id, sub, uid)).then((s) => (s.exists() ? id : null)).catch(() => null)));
       return new Set(res.filter(Boolean));
     },
@@ -204,6 +206,12 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
       await F.deleteDoc(F.doc(db, "users", u.uid));
       profile = null;
       await A.deleteUser(u);
+    },
+    // 自分の報告の日時（バッジの「連続報告」用。最大200件）
+    async myReportTimes() {
+      const q = F.query(F.collection(db, "reports"), F.where("uid", "==", auth.currentUser.uid), F.limit(200));
+      const snap = await F.getDocs(q);
+      return snap.docs.map((d) => ts(d.data().createdAt));
     },
     async myStats() {
       const q = F.query(F.collection(db, "reports"), F.where("uid", "==", auth.currentUser.uid));

@@ -75,13 +75,15 @@ export function createDemoBackend() {
     },
     async deleteReport(rid) { d.reports = d.reports.filter((x) => !(x.id === rid && x.uid === "me")); save(); },
     async vote(rid, kind) {
-      const box = kind === "like" ? d.likes : d.flags;
-      if (box[rid]) throw new Error("already");
-      box[rid] = true;
+      const [field, sub] = { like: ["likes", "likes"], flag: ["flags", "flags"], still: ["still", "stills"], gone: ["gone", "gones"] }[kind];
+      d[sub] = d[sub] || {};
+      if (d[sub][rid]) throw new Error("already");
+      d[sub][rid] = true;
       const rep = d.reports.find((x) => x.id === rid);
-      if (rep) rep[kind === "like" ? "likes" : "flags"]++;
+      if (rep) rep[field] = (rep[field] || 0) + 1;
       save();
     },
+    async myReportTimes() { return d.reports.filter((r) => r.uid === "me").map((r) => r.createdAt); },
     async listPhotos(storeId) { return wait((d.photos || []).filter((x) => x.storeId === storeId)); },
     async addPhoto(meta, full) {
       if (Date.now() - (d.lastPhoto || 0) < 60000) throw Object.assign(new Error("rate"), { code: "permission-denied" });
@@ -97,7 +99,7 @@ export function createDemoBackend() {
       d.photoFlags[pid] = true; const ph = (d.photos || []).find((x) => x.id === pid); if (ph) ph.flags++; save();
     },
     async myVotes(ids, kind) {
-      const box = kind === "like" ? d.likes : d.flags;
+      const box = d[{ like: "likes", flag: "flags", still: "stills", gone: "gones" }[kind]] || {};
       return new Set(ids.filter((i) => box[i]));
     },
     async deleteAccount() {

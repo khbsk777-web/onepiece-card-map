@@ -78,7 +78,31 @@ async function rank(y, m) {
   return { month: key(y, m), players: list.length, top: list.slice(0, TOP) };
 }
 
+// ---- 入荷しやすい曜日・時間帯（最近60日の「在庫あり・残りわずか」の報告から） ----
+const TREND_OUT = "data/trends.json";
+async function trends() {
+  const to = new Date().toISOString();
+  const from = new Date(Date.now() - 60 * 864e5).toISOString();
+  const reps = await readAll("reports", ["storeId", "status", "flags", "createdAt"], from, to);
+  const stores = {};
+  for (const r of reps) {
+    if (!["in", "low"].includes(r.status) || (r.flags || 0) >= HIDE_FLAGS || !r.storeId) continue;
+    const t = new Date(Date.parse(r.createdAt) + 9 * 3600e3); // 日本時間
+    const h = t.getUTCHours();
+    const slot = h < 6 ? 4 : h < 11 ? 0 : h < 15 ? 1 : h < 19 ? 2 : 3; // 朝・昼・夕方・夜・深夜
+    const x = stores[r.storeId] || (stores[r.storeId] = { n: 0, wd: [0, 0, 0, 0, 0, 0, 0], slot: [0, 0, 0, 0, 0] });
+    x.n++; x.wd[t.getUTCDay()]++; x.slot[slot]++;
+  }
+  for (const id of Object.keys(stores)) if (stores[id].n < 3) delete stores[id]; // 3件以上の報告があるお店だけ
+  console.log(`入荷の傾向：${Object.keys(stores).length}店（最近60日の報告${reps.length}件から）`);
+  let old = {};
+  try { old = JSON.parse(readFileSync(TREND_OUT, "utf8")); } catch { /* はじめて */ }
+  if (JSON.stringify(old.stores) === JSON.stringify(stores)) return;
+  writeFileSync(TREND_OUT, JSON.stringify({ updated: new Date().toISOString(), days: 60, stores }) + "\n");
+}
+
 async function main() {
+  await trends();
   let old = {};
   try { old = JSON.parse(readFileSync(OUT, "utf8")); } catch { /* はじめて */ }
   const now = new Date(Date.now() + 9 * 3600e3); // 日本時間

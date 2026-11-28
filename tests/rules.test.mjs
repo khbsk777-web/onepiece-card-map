@@ -47,6 +47,9 @@ await t("URL入りの商品名は拒否", assertFails(postReport(alice, report({
 await t("決められていない項目は拒否", assertFails(postReport(alice, report({ extra: 1 }))));
 await new Promise((r) => setTimeout(r, 5500));
 await t("商品名つきの報告はOK", assertSucceeds(postReport(alice, report({ itemName: "最強の戦士" }))));
+await t("決められていない購入制限は拒否", assertFails(postReport(alice, report({ limit: "p99" }))));
+await new Promise((r) => setTimeout(r, 5500));
+await t("購入制限つきの報告はOK", assertSucceeds(postReport(alice, report({ limit: "p3" }))));
 
 async function vote(db, uid, id, sub, field, to) {
   const b = writeBatch(db);
@@ -58,6 +61,11 @@ await t("👍は+1ならOK", assertSucceeds(vote(alice, "alice", "r1", "likes", 
 await t("👍の2回目は拒否", assertFails(vote(alice, "alice", "r1", "likes", "likes", 2)));
 await t("👍を+10は拒否", assertFails(vote(verified("carol"), "carol", "r1", "likes", "likes", 11)));
 await t("自分の投稿に👍は拒否", assertFails(vote(bob, "bob", "r1", "likes", "likes", 2)));
+await t("「まだあった」は+1ならOK（項目がまだない報告でも）", assertSucceeds(vote(alice, "alice", "r1", "stills", "still", 1)));
+await t("「まだあった」の2回目は拒否", assertFails(vote(alice, "alice", "r1", "stills", "still", 2)));
+await t("「もうなかった」を+5は拒否", assertFails(vote(verified("carol"), "carol", "r1", "gones", "gone", 5)));
+await t("「もうなかった」は+1ならOK", assertSucceeds(vote(verified("carol"), "carol", "r1", "gones", "gone", 1)));
+await t("自分の報告に「まだあった」は拒否", assertFails(vote(bob, "bob", "r1", "stills", "still", 2)));
 await t("他人の報告の書き換えは拒否", assertFails(updateDoc(doc(alice, "reports/r1"), { status: "out" })));
 await t("他人の報告の削除は拒否", assertFails(deleteDoc(doc(alice, "reports/r1"))));
 await t("自分の報告は削除できる", assertSucceeds(deleteDoc(doc(bob, "reports/r1"))));

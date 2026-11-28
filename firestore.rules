@@ -85,7 +85,7 @@ service cloud.firestore {
       function d() { return request.resource.data; }
       function counterPlusOne(field, sub) {
         return d().diff(resource.data).affectedKeys().hasOnly([field])
-          && d()[field] == resource.data[field] + 1
+          && d()[field] == resource.data.get(field, 0) + 1
           && resource.data.uid != request.auth.uid
           && !exists(/databases/$(database)/documents/reports/$(reportId)/$(sub)/$(request.auth.uid))
           && existsAfter(/databases/$(database)/documents/reports/$(reportId)/$(sub)/$(request.auth.uid));
@@ -94,7 +94,9 @@ service cloud.firestore {
       allow read: if true;
       allow create: if verified()
         && d().keys().hasAll(['storeId', 'uid', 'nickname', 'product', 'setCode', 'status', 'saleType', 'note', 'likes', 'flags', 'createdAt'])
-        && d().keys().hasOnly(['storeId', 'uid', 'nickname', 'product', 'setCode', 'status', 'saleType', 'note', 'likes', 'flags', 'createdAt', 'itemName'])
+        && d().keys().hasOnly(['storeId', 'uid', 'nickname', 'product', 'setCode', 'status', 'saleType', 'note', 'likes', 'flags', 'createdAt', 'itemName', 'limit'])
+        // 購入制限（例：1人3パックまで）は任意・決まった値だけ
+        && (!('limit' in d()) || d().limit in ['none', 'p1', 'p2', 'p3', 'p5', 'p10', 'box1'])
         // 商品名（例：最強の戦士）は任意・30文字まで・URL不可
         && (!('itemName' in d()) || (str(d().itemName, 1, 30) && safeText(d().itemName)))
         && d().uid == request.auth.uid
@@ -109,7 +111,9 @@ service cloud.firestore {
         && d().createdAt == request.time
         && stamped('lastReport');
       // 自分の報告以外は書き換え不可。他人ができるのは👍と通報の+1だけ（1人1回）
-      allow update: if verified() && (counterPlusOne('likes', 'likes') || counterPlusOne('flags', 'flags'));
+      // 「まだあった」「もうなかった」も1人1回の+1だけ
+      allow update: if verified() && (counterPlusOne('likes', 'likes') || counterPlusOne('flags', 'flags')
+        || counterPlusOne('still', 'stills') || counterPlusOne('gone', 'gones'));
       allow delete: if verified() && resource.data.uid == request.auth.uid;
 
       match /likes/{uid} {
@@ -126,6 +130,22 @@ service cloud.firestore {
           && exactKeys(request.resource.data, ['createdAt']) && request.resource.data.createdAt == request.time
           && getAfter(/databases/$(database)/documents/reports/$(reportId)).data.flags
              == get(/databases/$(database)/documents/reports/$(reportId)).data.flags + 1;
+        allow update, delete: if false;
+      }
+      match /stills/{uid} {
+        allow read: if isMe(uid);
+        allow create: if verified() && isMe(uid)
+          && exactKeys(request.resource.data, ['createdAt']) && request.resource.data.createdAt == request.time
+          && getAfter(/databases/$(database)/documents/reports/$(reportId)).data.get('still', 0)
+             == get(/databases/$(database)/documents/reports/$(reportId)).data.get('still', 0) + 1;
+        allow update, delete: if false;
+      }
+      match /gones/{uid} {
+        allow read: if isMe(uid);
+        allow create: if verified() && isMe(uid)
+          && exactKeys(request.resource.data, ['createdAt']) && request.resource.data.createdAt == request.time
+          && getAfter(/databases/$(database)/documents/reports/$(reportId)).data.get('gone', 0)
+             == get(/databases/$(database)/documents/reports/$(reportId)).data.get('gone', 0) + 1;
         allow update, delete: if false;
       }
     }

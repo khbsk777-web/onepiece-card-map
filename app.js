@@ -6,6 +6,9 @@ import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
 export const PRODUCTS = { booster: "ブースターパック", extra: "エクストラブースター", premium: "プレミアムブースター", starter: "スタートデッキ", other: "その他" };
 export const STATUS = { in: "在庫あり", low: "残りわずか", out: "売り切れ", soon: "入荷予定", na: "取り扱いなし" };
 export const SALE = { pack: "バラ売り", box: "BOX", lottery: "抽選", other: "その他" };
+export const LIMIT = { none: "制限なし", p1: "1人1パック", p2: "1人2パック", p3: "1人3パック", p5: "1人5パック", p10: "1人10パック", box1: "1人1BOX" };
+// 「もうなかった」が「まだあった」より多い報告は、売り切れとして扱う
+export const effStatus = (r) => (r && (r.gone || 0) > (r.still || 0) && ["in", "low"].includes(r.status) ? "out" : r?.status);
 const PREFS = "北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県".split(" ");
 const DAYS = 7;            // 何日前までの報告を読むか
 const STALE_H = 72;        // これより古い情報は薄く表示
@@ -94,7 +97,11 @@ function errMsg(e) {
 }
 
 // ---------- 状態 ----------
-const S = { placesMode: "all", places: null, backend: null, user: null, stores: [], reports: [], filter: "all", product: "", pref: "", mode: null, map: null, layer: null, me: null, liked: new Set(), flagged: new Set() };
+// お気に入りのお店（この端末だけに保存。ログイン不要）
+const FAV_KEY = "opmap-favs";
+function loadFavs() { try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY)) || []); } catch { return new Set(); } }
+function saveFavs() { try { localStorage.setItem(FAV_KEY, JSON.stringify([...S.favs].slice(0, 200))); } catch { /* なにもしない */ } }
+const S = { favs: loadFavs(), stilled: new Set(), goned: new Set(), placesMode: "all", places: null, backend: null, user: null, stores: [], reports: [], filter: "all", product: "", pref: "", mode: null, map: null, layer: null, me: null, liked: new Set(), flagged: new Set() };
 
 // 店ごとの「いちばん新しい報告」
 export function latestFor(reports, storeId, product) {
@@ -105,12 +112,13 @@ export function latestFor(reports, storeId, product) {
   }
   return null;
 }
-export function visibleStores(stores, reports, { filter, product, pref }, now = Date.now()) {
+export function visibleStores(stores, reports, { filter, product, pref, favs }, now = Date.now()) {
   const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
   return stores.filter((s) => {
     if (pref && s.pref !== pref) return false;
     const r = latestFor(reports, s.id, product);
-    if (filter === "stock") return r && (r.status === "in" || r.status === "low") && now - r.createdAt < STALE_H * 3600e3;
+    if (filter === "fav") return favs && favs.has(s.id);
+    if (filter === "stock") return r && ["in", "low"].includes(effStatus(r)) && now - r.createdAt < STALE_H * 3600e3;
     if (filter === "today") return r && r.createdAt >= startOfDay.getTime();
     return true;
   });
@@ -146,7 +154,7 @@ function render() {
   const now = Date.now();
   for (const s of list) {
     const r = latestFor(S.reports, s.id, S.product);
-    const cls = r ? r.status : "none";
+    const cls = r ? effStatus(r) : "none";
     const stale = r && now - r.createdAt > STALE_H * 3600e3;
     const ch = chainOf(s.name);
     const wrap = el("div", { class: "pinwrap" }, el("div", { class: `pin ${cls}${stale ? " stale" : ""}` }), ch ? cvsBadge(ch) : null);
@@ -541,7 +549,10 @@ async function openAccount() {
   nick.onclick = () => openNickname(openAccount);
   out.onclick = busy(out, async () => { await S.backend.signOut(); closeSheet(); toast("ログアウトしました"); });
   del.onclick = openDeleteAccount;
-  openSheet(el("h2", { text: S.user.nickname }), el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt、開拓1店＝20pt" }), stat, nick, out,
+  const titleLine = el("p", { class: "title-line", text: "称号を読み込み中…" });
+  const badgeBox = el("div", { class: "badges" });
+  openSheet(el("h2", { text: S.user.nickname }), titleLine, el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt、開拓1店＝20pt" }), stat,
+    el("h3", { class: "mini-h", text: "🎖 バッジ" }), badgeBox, nick, out,
     el("button", { class: "btn ghost", type: "button", text: "🏆 月間ランキング・表彰", onclick: openRanking }),
     el("button", { class: "btn ghost", type: "button", text: "🏴 開拓者ランキング", onclick: openPioneers }), aboutLink(), del);
   try {
@@ -549,9 +560,151 @@ async function openAccount() {
     const b = stat.querySelectorAll("b");
     const pioneered = S.stores.filter((s) => s.createdBy && s.createdBy === S.user.uid).length;
     b[0].textContent = st.reports; b[1].textContent = st.likes; b[2].textContent = pioneered;
-    b[3].textContent = st.reports * 10 + st.likes * 5 + pioneered * PIONEER_PT;
-  } catch (e) { console.warn(e); }
+    const pt = st.reports * 10 + st.likes * 5 + pioneered * PIONEER_PT;
+    b[3].textContent = pt;
+    const t = titleFor(pt);
+    titleLine.textContent = t.next ? `${t.icon} ${t.name}（次の「${t.next.name}」まであと${t.next.pt - pt}pt）` : `${t.icon} ${t.name}`;
+    let times = [];
+    try { times = await S.backend.myReportTimes(); } catch { /* 読めなくてもバッジは出す */ }
+    const streak = bestStreak(times);
+    badgeBox.replaceChildren(...BADGES.map((x) => {
+      const got = x.test({ reports: st.reports, likes: st.likes, pioneered, streak });
+      return el("div", { class: "badge-item" + (got ? " got" : ""), title: x.hint },
+        el("span", { class: "b-ic", text: got ? x.icon : "🔒" }), el("span", { class: "b-name", text: x.name }), el("span", { class: "b-hint", text: x.hint }));
+    }));
+  } catch (e) { console.warn(e); titleLine.textContent = ""; }
 }
+// ---------- 称号とバッジ ----------
+const TITLES = [
+  { pt: 0, icon: "🧭", name: "見習い冒険家" }, { pt: 100, icon: "🗺", name: "探検家" }, { pt: 300, icon: "⚓", name: "航海士" },
+  { pt: 1000, icon: "🚢", name: "船長" }, { pt: 3000, icon: "👑", name: "伝説の冒険家" },
+];
+function titleFor(pt) {
+  let i = 0;
+  TITLES.forEach((t, k) => { if (pt >= t.pt) i = k; });
+  return { ...TITLES[i], next: TITLES[i + 1] || null };
+}
+const BADGES = [
+  { icon: "🎉", name: "はじめての報告", hint: "報告1回", test: (x) => x.reports >= 1 },
+  { icon: "📝", name: "報告マスター", hint: "報告10回", test: (x) => x.reports >= 10 },
+  { icon: "🏅", name: "報告の達人", hint: "報告50回", test: (x) => x.reports >= 50 },
+  { icon: "💎", name: "報告レジェンド", hint: "報告100回", test: (x) => x.reports >= 100 },
+  { icon: "👍", name: "みんなの味方", hint: "👍を10個もらう", test: (x) => x.likes >= 10 },
+  { icon: "🏴", name: "はじめての開拓", hint: "開拓1店", test: (x) => x.pioneered >= 1 },
+  { icon: "🗾", name: "大開拓者", hint: "開拓10店", test: (x) => x.pioneered >= 10 },
+  { icon: "🔥", name: "3日連続", hint: "3日続けて報告", test: (x) => x.streak >= 3 },
+  { icon: "⚡", name: "7日連続", hint: "7日続けて報告", test: (x) => x.streak >= 7 },
+];
+// 日本時間で何日続けて報告したか（いちばん長い記録）
+function bestStreak(times) {
+  const days = [...new Set(times.map((t) => Math.floor((t + 9 * 3600e3) / 864e5)))].sort((a, b) => a - b);
+  let best = 0, run = 0;
+  days.forEach((d, i) => { run = i && d === days[i - 1] + 1 ? run + 1 : 1; best = Math.max(best, run); });
+  return best;
+}
+
+// ---------- 入荷しやすい曜日・時間帯（6時間ごとに自動集計した data/trends.json） ----------
+let trendsCache = null;
+async function loadTrends() {
+  if (trendsCache) return trendsCache;
+  try { const res = await fetch("data/trends.json", { cache: "no-cache" }); trendsCache = res.ok ? (await res.json()).stores || {} : {}; } catch { trendsCache = {}; }
+  return trendsCache;
+}
+const WD = ["日", "月", "火", "水", "木", "金", "土"], SLOT = ["朝", "昼", "夕方", "夜", "深夜"];
+function trendText(t) {
+  if (!t || t.n < 3) return "";
+  const top = (arr, names) => { const m = Math.max(...arr); return arr.map((v, i) => (v === m && m > 0 ? names[i] : null)).filter(Boolean).slice(0, 2).join("・"); };
+  return `📈 入荷の報告が多いのは「${top(t.wd, WD)}曜日」の「${top(t.slot, SLOT)}」（最近60日・${t.n}件）`;
+}
+
+// ---------- 発売日カレンダー（data/releases.json） ----------
+let releasesCache = null;
+async function loadReleases() {
+  if (releasesCache) return releasesCache;
+  try { const res = await fetch("data/releases.json", { cache: "no-cache" }); releasesCache = res.ok ? (await res.json()).items || [] : []; } catch { releasesCache = []; }
+  return releasesCache;
+}
+// 日本時間の「今日」から何日後か（0＝今日、1＝明日、マイナス＝発売ずみ）
+function daysUntil(date) {
+  const today = Math.floor((Date.now() + 9 * 3600e3) / 864e5);
+  return Math.round(Date.parse(date + "T00:00:00+09:00") / 864e5 + 9 / 24) - today;
+}
+async function openCalendar() {
+  const list = (await loadReleases()).map((x) => ({ ...x, d: daysUntil(x.date) })).filter((x) => x.d >= -7).sort((a, b) => a.d - b.d);
+  const label = (d) => (d === 0 ? "🎉 今日発売" : d === 1 ? "⏰ 明日発売" : d < 0 ? "発売中" : `あと${d}日`);
+  openSheet(el("h2", { text: "📅 発売日カレンダー" }),
+    el("p", { class: "sub", text: "公式サイトで発表された発売日です。発売日の前日と当日は、アプリを開いたときにお知らせします。" }),
+    ...(list.length ? list.map((x) => el("div", { class: "rel-row" + (x.d <= 1 ? " soon" : "") },
+      el("div", {}, el("b", { text: x.name }), el("div", { class: "meta", text: `${x.date.replace(/-/g, "/")}（${WD[new Date(x.date + "T00:00:00+09:00").getDay()]}）${x.code ? "・" + x.code : ""}` })),
+      el("span", { class: "rel-left", text: label(x.d) })))
+      : [el("p", { class: "small", text: "いま発表されている発売予定はありません。" })]),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+async function showReleaseBanner() {
+  const soon = (await loadReleases()).map((x) => ({ ...x, d: daysUntil(x.date) })).filter((x) => x.d === 0 || x.d === 1);
+  if (!soon.length) return;
+  const x = soon[0];
+  const b = $("#releaseBanner");
+  b.querySelector("span").textContent = `📅 ${x.d === 0 ? "今日" : "明日"}は「${x.name}」の発売日！`;
+  b.hidden = false;
+  b.querySelector("span").onclick = openCalendar;
+  b.querySelector("button").onclick = () => { b.hidden = true; };
+}
+
+// ---------- 近くの在庫あり・お気に入り ----------
+function storeRow(s, r, distKm) {
+  const st = r ? effStatus(r) : null;
+  return el("div", { class: "feed-item", role: "button", tabindex: "0", onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } },
+    el("div", { class: "row", style: "display:flex;justify-content:space-between;gap:8px" },
+      el("b", { text: (S.favs.has(s.id) ? "⭐ " : "") + s.name }), el("span", { class: "meta", text: distKm != null ? `${distKm < 1 ? Math.round(distKm * 1000) + "m" : distKm.toFixed(1) + "km"}` : "" })),
+    r ? el("div", {}, el("span", { class: `badge ${st}`, text: STATUS[st] }), " ", itemLabel(r) || PRODUCTS[r.product] || "",
+      r.limit && r.limit !== "none" ? el("span", { class: "meta", text: `・${LIMIT[r.limit]}` }) : null,
+      el("span", { class: "meta", text: `・${timeAgo(r.createdAt)}` }))
+      : el("div", { class: "meta", text: `最近${DAYS}日の報告はまだありません` }));
+}
+async function openNearby() {
+  openSheet(el("h2", { text: "📍 近くの在庫あり" }), el("p", { class: "sub", text: "現在地を調べています…" }));
+  let me;
+  try { me = await getPos(); } catch {
+    return openSheet(el("h2", { text: "📍 近くの在庫あり" }), el("p", { class: "sub", text: "位置情報を許可すると、近い順に表示できます。" }),
+      el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+  }
+  const now = Date.now();
+  const list = S.stores.map((s) => ({ s, r: latestFor(S.reports, s.id, S.product), d: distM(me, s) / 1000 }))
+    .filter((x) => x.r && ["in", "low"].includes(effStatus(x.r)) && now - x.r.createdAt < STALE_H * 3600e3 && x.d <= 30)
+    .sort((a, b) => a.d - b.d).slice(0, 30);
+  openSheet(el("h2", { text: "📍 近くの在庫あり" }),
+    el("p", { class: "sub", text: `現在地から30km以内・最近${STALE_H}時間の「在庫あり」「残りわずか」を近い順に表示` }),
+    ...(list.length ? list.map((x) => storeRow(x.s, x.r, x.d)) : [el("p", { class: "small", text: "近くの在庫情報はまだありません。見つけたら報告してね！" })]),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+function openFavorites() {
+  const list = S.stores.filter((s) => S.favs.has(s.id));
+  const me = S.myPos;
+  openSheet(el("h2", { text: "⭐ お気に入りのお店" }),
+    el("p", { class: "sub", text: "お店の画面の「☆」で追加できます（この端末に保存）。" }),
+    ...(list.length ? list.map((s) => storeRow(s, latestFor(S.reports, s.id, S.product), me ? distM(me, s) / 1000 : null))
+      : [el("p", { class: "small", text: "まだお気に入りがありません。よく行くお店を開いて「☆ お気に入り」を押してね。" })]),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+
+// ---------- 表示（ダークモード） ----------
+const THEME_KEY = "opmap-theme";
+const THEMES = { auto: "自動", light: "ライト", dark: "ダーク" };
+function getTheme() { try { return localStorage.getItem(THEME_KEY) || "auto"; } catch { return "auto"; } }
+function applyTheme() {
+  const t = getTheme();
+  const dark = t === "dark" || (t === "auto" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+}
+function cycleTheme(btn) {
+  const order = ["auto", "light", "dark"];
+  const next = order[(order.indexOf(getTheme()) + 1) % 3];
+  try { localStorage.setItem(THEME_KEY, next); } catch { /* なにもしない */ }
+  applyTheme();
+  if (btn) btn.textContent = `🌙 表示：${THEMES[next]}`;
+}
+
 function aboutLink(text = "ℹ️ このアプリについて・プライバシー・規約") {
   return el("a", { class: "btn ghost", href: "about.html", text });
 }
@@ -685,9 +838,18 @@ async function openStore(id) {
   const gmap = el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" });
   const listBox = el("div");
   const ch = chainOf(s.name);
-  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), APP_URL));
+  const fav = el("button", { class: "fav-btn" + (S.favs.has(s.id) ? " on" : ""), type: "button", text: S.favs.has(s.id) ? "★ お気に入り" : "☆ お気に入り" });
+  fav.onclick = () => {
+    S.favs.has(s.id) ? S.favs.delete(s.id) : S.favs.add(s.id); saveFavs();
+    fav.classList.toggle("on", S.favs.has(s.id)); fav.textContent = S.favs.has(s.id) ? "★ お気に入り" : "☆ お気に入り";
+    toast(S.favs.has(s.id) ? "お気に入りに追加しました" : "お気に入りから外しました");
+    if (S.filter === "fav") render();
+  };
+  const trend = el("p", { class: "trend" });
+  loadTrends().then((t) => { trend.textContent = trendText(t[s.id]); });
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, fav, trend, reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), APP_URL));
   if (S.user?.emailVerified && ids.length) {
-    try { [S.liked, S.flagged] = await Promise.all([S.backend.myVotes(ids, "like"), S.backend.myVotes(ids, "flag")]); } catch {}
+    try { [S.liked, S.flagged, S.stilled, S.goned] = await Promise.all(["like", "flag", "still", "gone"].map((k) => S.backend.myVotes(ids, k))); } catch {}
   }
   listBox.replaceChildren(
     el("p", { class: "meta", style: "margin-top:14px", text: `最近${DAYS}日の報告（${reps.length}件）` }),
@@ -710,6 +872,23 @@ function reportItem(r) {
     await S.backend.vote(r.id, "flag"); r.flags = (r.flags || 0) + 1; S.flagged.add(r.id);
     flag.textContent = "🚩 通報済み"; setTimeout(() => (flag.disabled = true)); toast("通報しました。ありがとう！"); render();
   });
+  // 「まだあった」「もうなかった」：現地（3km以内）にいる人だけ、1人1回
+  const store = S.stores.find((x) => x.id === r.storeId);
+  const canCheck = ["in", "low"].includes(r.status);
+  const mkCheck = (kind, label, set) => {
+    const field = kind === "still" ? "still" : "gone";
+    const b = el("button", { type: "button", class: `chk ${kind}`, text: `${label} ${r[field] || 0}`, disabled: mine || set.has(r.id) });
+    b.onclick = busy(b, async () => {
+      if (!ready()) return;
+      if (store && !(await nearCheck(store))) return;
+      await S.backend.vote(r.id, kind); r[field] = (r[field] || 0) + 1; set.add(r.id);
+      toast(kind === "still" ? "ありがとう！まだあることをみんなに伝えました" : "ありがとう！売り切れたことをみんなに伝えました");
+      render(); openStore(r.storeId);
+    });
+    return b;
+  };
+  const checks = canCheck ? el("div", { class: "acts chk-row" },
+    mkCheck("still", "✅ まだあった", S.stilled), mkCheck("gone", "❌ もうなかった", S.goned)) : null;
   const del = mine ? el("button", { type: "button", text: "🗑 削除" }) : null;
   if (del) del.onclick = busy(del, async () => {
     if (!confirmInline(del)) return;
@@ -721,7 +900,9 @@ function reportItem(r) {
       el("div", {}, el("span", { class: `badge ${r.status}`, text: STATUS[r.status] || "?" }), " ",
         el("b", { text: PRODUCTS[r.product] || "" }), itemLabel(r) ? el("span", { class: "meta", text: ` ${itemLabel(r)}` }) : null),
       el("span", { class: "meta", text: timeAgo(r.createdAt) })),
-    el("div", { class: "meta", text: `${SALE[r.saleType] || ""}・${r.nickname || "名無し"}` }),
+    el("div", { class: "meta", text: [SALE[r.saleType], r.limit && LIMIT[r.limit], r.nickname || "名無し"].filter(Boolean).join("・") }),
+    effStatus(r) !== r.status ? el("div", { class: "gone-note", text: "❌ もうなかったという声が多いです（売り切れたかも）" }) : null,
+    checks,
     r.note ? el("p", { class: "note", text: r.note }) : null,
     el("div", { class: "acts" }, like, flag, del));
 }
@@ -862,6 +1043,7 @@ function openReportForm(s, place = null, initStatus = "in") {
   const product = seg(PRODUCTS, "booster");
   const status = seg(STATUS, initStatus);
   const sale = seg(SALE, "pack");
+  const limit = el("select", {}, el("option", { value: "", text: "わからない・書かない" }), ...Object.entries(LIMIT).map(([k, v]) => el("option", { value: k, text: v })));
   const item = el("input", { type: "text", maxLength: 30, placeholder: "例：最強の戦士（わからなければ空でOK）", autocomplete: "off", enterkeyhint: "done" });
   const itemBox = el("div", { class: "sugg-chips" });
   const drawItems = () => {
@@ -891,13 +1073,15 @@ function openReportForm(s, place = null, initStatus = "in") {
       s = st;
     }
     const base = { storeId: s.id, product: product.get(), setCode: "", status: status.get(), saleType: sale.get(), note: n };
+    const lim = limit.value;
     let rep;
     try {
-      rep = await S.backend.addReport(itemName ? { ...base, itemName } : base);
+      rep = await S.backend.addReport({ ...base, ...(itemName ? { itemName } : {}), ...(lim ? { limit: lim } : {}) });
     } catch (e) {
-      // サーバーのルールがまだ古いとき：商品名をメモの先頭に入れて送り直す
-      if (!itemName || e?.code !== "permission-denied") throw e;
-      rep = await S.backend.addReport({ ...base, note: clean(`【${itemName}】${n}`, 100) });
+      // サーバーのルールがまだ古いとき：商品名と購入制限をメモの先頭に入れて送り直す
+      if ((!itemName && !lim) || e?.code !== "permission-denied") throw e;
+      const pre = [itemName && `【${itemName}】`, lim && `【${LIMIT[lim]}】`].filter(Boolean).join("");
+      rep = await S.backend.addReport({ ...base, note: clean(pre + n, 100) });
     }
     rememberItem(itemName);
     S.reports.unshift(rep); render(); toast("報告ありがとう！ +10pt"); openStore(s.id);
@@ -908,6 +1092,7 @@ function openReportForm(s, place = null, initStatus = "in") {
     el("label", { text: "商品名（任意）" }), item, itemBox,
     el("label", { text: "いまの状態" }), status.box,
     el("label", { text: "売り方" }), sale.box,
+    el("label", { text: "購入制限（任意）" }), limit,
     el("label", { text: "カードが置いてある場所（メモ・任意）" }), placeBox, note,
     el("div", { class: "warn", text: "見たままの情報だけ書いてね。ウソの情報・転売の呼びかけ・個人情報は禁止です。" }),
     send);
@@ -994,17 +1179,22 @@ function openFeed() {
     const s = S.stores.find((x) => x.id === r.storeId);
     return s && (!S.pref || s.pref === S.pref) && (!S.product || r.product === S.product);
   }).slice(0, 40);
-  openSheet(el("h2", { text: "🆕 新着の報告" }), el("p", { class: "sub", text: S.pref || "全国" }),
-    el("div", { class: "two-btn" },
-      el("button", { class: "btn sec", type: "button", text: "🏆 月間ランキング", onclick: openRanking }),
-      el("button", { class: "btn sec", type: "button", text: "🏴 開拓者", onclick: openPioneers })),
+  openSheet(el("h2", { text: "🧭 メニュー" }), el("p", { class: "sub", text: S.pref || "全国" }),
+    el("div", { class: "hub" },
+      el("button", { class: "btn sec", type: "button", text: "📍 近くの在庫", onclick: openNearby }),
+      el("button", { class: "btn sec", type: "button", text: "⭐ お気に入り", onclick: openFavorites }),
+      el("button", { class: "btn sec", type: "button", text: "📅 発売日", onclick: openCalendar }),
+      el("button", { class: "btn sec", type: "button", text: "🏆 ランキング", onclick: openRanking }),
+      el("button", { class: "btn sec", type: "button", text: "🏴 開拓者", onclick: openPioneers }),
+      el("button", { class: "btn sec", type: "button", text: `🌙 表示：${THEMES[getTheme()]}`, onclick: (e) => cycleTheme(e.currentTarget) })),
+    el("h3", { class: "mini-h", text: "🆕 新着の報告" }),
     ...(items.length ? items.map((r) => {
       const s = S.stores.find((x) => x.id === r.storeId);
       return el("div", { class: "feed-item", role: "button", tabindex: "0", onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } },
         el("div", { class: "row", style: "display:flex;justify-content:space-between" }, el("b", { text: s.name }), el("span", { class: "meta", text: timeAgo(r.createdAt) })),
-        el("div", {}, el("span", { class: `badge ${r.status}`, text: STATUS[r.status] }), " ", PRODUCTS[r.product] || "", itemLabel(r) ? ` ${itemLabel(r)}` : ""));
+        el("div", {}, el("span", { class: `badge ${effStatus(r)}`, text: STATUS[effStatus(r)] }), " ", PRODUCTS[r.product] || "", itemLabel(r) ? ` ${itemLabel(r)}` : ""));
     }) : [el("p", { class: "small", text: "まだ報告がありません" })]),
-    xShareBtn(`ワンピースカードの在庫を、みんなで報告し合う地図アプリ「トレジャーカードマップ」（非公式）を使ってみてね🗺\n${TAGS}`, APP_URL));
+    xShareBtn(`ワンピースカードの在庫を、みんなで報告し合う地図アプリ「トレジャーカードマップ」を使ってみてね🗺\n${TAGS}`, APP_URL));
 }
 
 // ---------- 絞り込み ----------
@@ -1101,6 +1291,9 @@ async function main() {
   $("#accountBtn").onclick = openAccount;
   $("#addStoreBtn").onclick = openAddStore;
   $("#feedBtn").onclick = openFeed;
+  applyTheme();
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
+  showReleaseBanner();
   // 開いてすぐ見える「𝕏」ボタン：アプリを紹介する文をXに入れて開く
   $("#xShareFab").href = `https://x.com/intent/post?text=${encodeURIComponent(`みんなでシェアしてカード集めよう！🗺\nワンピースカードの在庫を報告し合える地図アプリ「トレジャーカードマップ」\nコンビニ・本屋・ヨドバシの入荷情報がひと目で分かる！無料で使えるよ\n${TAGS}`)}&url=${encodeURIComponent(APP_URL)}`;
   // 開いたときに画面の真ん中に「Xでシェアしてね」を出す（「今日はもう表示しない」を押した日は出さない）

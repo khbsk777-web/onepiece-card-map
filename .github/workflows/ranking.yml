@@ -1,4 +1,4 @@
-name: 月間ランキングを更新
+name: 月間ランキングと入荷の傾向を更新
 on:
   workflow_dispatch:
   schedule:
@@ -28,7 +28,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/ranking.json
+          for f in data/ranking.json data/trends.json; do [ -f "$f" ] && git add "$f"; done; true
           if git diff --cached --quiet; then echo "変更なし"; exit 0; fi
           git commit -m "月間ランキングを更新"
           git pull --rebase origin main

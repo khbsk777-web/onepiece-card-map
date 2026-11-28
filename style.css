@@ -145,3 +145,51 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .x-today{border:0;background:none;color:#6b7280;font-size:13px;margin-top:8px;padding:6px;text-decoration:underline;cursor:pointer}
 @keyframes xpop{from{transform:translateY(10px) scale(.97);opacity:0}to{transform:none;opacity:1}}
 .brand,.doc-brand{display:flex;align-items:center;gap:8px}.brand-logo{border-radius:7px;flex:none;box-shadow:0 1px 3px #0006}
+
+/* メニュー（ハブ） */
+.hub{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 6px}
+.hub .btn{margin:0;padding:12px 4px;font-size:13px}
+.mini-h{font-size:15px;margin:16px 0 4px}
+/* お気に入り */
+.fav-btn{border:1px solid #f2c14e;background:#fff;color:#8a5a00;border-radius:999px;padding:6px 14px;font-weight:800;font-size:14px;margin:0 0 8px}
+.fav-btn.on{background:#f2c14e;color:#14213d}
+/* まだあった・もうなかった */
+.chk-row .chk.still{border-color:#86efac;color:#15803d}.chk-row .chk.gone{border-color:#fca5a5;color:#b91c1c}
+.gone-note{font-size:12px;color:#b91c1c;font-weight:700;margin-top:4px}
+.trend{font-size:13px;color:#14532d;background:#ecfdf5;border-radius:8px;padding:6px 10px;margin:0 0 8px}.trend:empty{display:none}
+/* 称号・バッジ */
+.title-line{font-weight:800;color:#8a5a00;margin:0 0 6px}
+.badges{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.badge-item{background:#f3f4f6;border-radius:10px;padding:8px 4px;text-align:center;opacity:.55}
+.badge-item.got{background:#fff8e1;opacity:1;box-shadow:inset 0 0 0 1px #f2c14e}
+.badge-item .b-ic{display:block;font-size:22px}.badge-item .b-name{display:block;font-size:12px;font-weight:800}.badge-item .b-hint{display:block;font-size:10px;color:var(--muted)}
+/* 発売日 */
+.rel-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #eee}
+.rel-row.soon{background:#fff8e1;border-radius:10px;padding:10px 8px}
+.rel-left{font-weight:800;color:#d62828;white-space:nowrap;font-size:14px}
+.release-banner{position:fixed;top:104px;left:50%;transform:translateX(-50%);z-index:997;background:#f2c14e;color:#14213d;font-weight:800;font-size:14px;border-radius:999px;padding:6px 6px 6px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(0,0,0,.25);max-width:94vw}
+.release-banner span{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.release-banner button{border:0;background:#14213d;color:#fff;border-radius:50%;width:24px;height:24px;line-height:1;flex:none}
+
+/* ダークモード */
+html[data-theme=dark]{--bg:#0f172a;--ink:#e5e7eb;--muted:#9ca3af;color-scheme:dark}
+html[data-theme=dark] .filters,html[data-theme=dark] .sheet,html[data-theme=dark] .x-card{background:#111827;color:var(--ink)}
+html[data-theme=dark] .chip,html[data-theme=dark] .chip-select{background:#1f2937;border-color:#374151;color:var(--ink)}
+html[data-theme=dark] .chip.on{background:#f2c14e;border-color:#f2c14e;color:#14213d}
+html[data-theme=dark] .sheet input,html[data-theme=dark] .sheet select,html[data-theme=dark] .sheet textarea{background:#1f2937;border-color:#374151;color:var(--ink)}
+html[data-theme=dark] .btn.sec{background:#1e293b;color:#e5e7eb}
+html[data-theme=dark] .btn.ghost,html[data-theme=dark] .sheet-close{background:#1f2937;color:var(--ink)}
+html[data-theme=dark] .seg button,html[data-theme=dark] .acts button,html[data-theme=dark] .s-chip,html[data-theme=dark] .fav-btn{background:#1f2937;border-color:#374151;color:var(--ink)}
+html[data-theme=dark] .seg button.on{background:#f2c14e;border-color:#f2c14e;color:#14213d}
+html[data-theme=dark] .fav-btn.on{background:#f2c14e;color:#14213d}
+html[data-theme=dark] .report,html[data-theme=dark] .feed-item,html[data-theme=dark] .rel-row,html[data-theme=dark] .pioneer-row{border-color:#1f2937}
+html[data-theme=dark] .stat div,html[data-theme=dark] .badge-item{background:#1f2937}
+html[data-theme=dark] .badge-item.got,html[data-theme=dark] .pioneer-me,html[data-theme=dark] .pioneer-row.me,html[data-theme=dark] .rel-row.soon,html[data-theme=dark] .warn{background:#3b2f0b;color:#fde68a}
+html[data-theme=dark] .trend{background:#052e16;color:#bbf7d0}
+html[data-theme=dark] .legend{background:rgba(17,24,39,.92);color:var(--ink)}
+html[data-theme=dark] .fab.small,html[data-theme=dark] .fab.light{background:#1f2937;color:#fff}
+html[data-theme=dark] .search-results button{background:#111827;color:var(--ink);border-color:#1f2937}
+html[data-theme=dark] .x-card h2{color:#fff}html[data-theme=dark] .x-card p{color:#cbd5e1}
+html[data-theme=dark] .quick-q,html[data-theme=dark] .sheet h2,html[data-theme=dark] .sheet h3{color:var(--ink)}
+html[data-theme=dark] .quick{background:#1f2937}
+html[data-theme=dark] .sheet .addr{color:var(--ink)}
