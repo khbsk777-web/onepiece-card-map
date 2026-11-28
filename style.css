@@ -135,7 +135,12 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .rank-sub{color:#6b7280;font-size:11px;font-weight:400}
 .two-btn{display:grid;grid-template-columns:1fr 1fr;gap:8px}.two-btn .btn{margin:0}
 .hall{margin:10px 0}.hall summary{font-weight:700;cursor:pointer;padding:6px 0}
-.x-bubble{position:relative;background:#000;color:#fff;font-size:13px;font-weight:700;padding:8px 12px;border-radius:12px;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.3);cursor:pointer;animation:xpop .4s ease-out}
-.x-bubble::after{content:"";position:absolute;right:16px;bottom:-7px;border:7px solid transparent;border-bottom:0;border-top-color:#000}
-.x-bubble[hidden]{display:none}
-@keyframes xpop{from{transform:translateY(6px);opacity:0}to{transform:none;opacity:1}}
+.x-modal{position:fixed;inset:0;z-index:3000;background:rgba(10,15,30,.55);display:flex;align-items:center;justify-content:center;padding:24px}
+.x-modal[hidden]{display:none}
+.x-card{background:#fff;border-radius:20px;padding:22px 20px 14px;max-width:340px;width:100%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.35);animation:xpop .35s ease-out}
+.x-card img{border-radius:20px;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+.x-card h2{font-size:20px;line-height:1.4;margin:12px 0 6px;color:#14213d}
+.x-card p{font-size:14px;color:#4b5563;margin:0 0 14px}
+.x-card .btn{width:100%;margin:6px 0 0}
+.x-today{border:0;background:none;color:#6b7280;font-size:13px;margin-top:8px;padding:6px;text-decoration:underline;cursor:pointer}
+@keyframes xpop{from{transform:translateY(10px) scale(.97);opacity:0}to{transform:none;opacity:1}}

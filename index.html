@@ -52,7 +52,6 @@
 
 <div class="fabs">
   <button id="locateBtn" class="fab light" type="button">📍 現在地</button>
-  <div id="xBubble" class="x-bubble" hidden>Xでみんなにシェアしてカード集めよう！</div>
   <a id="xShareFab" class="fab small x-fab" href="https://x.com/" target="_blank" rel="noopener noreferrer" aria-label="Xでアプリをシェア">𝕏</a>
   <button id="feedBtn" class="fab small" type="button" aria-label="新着情報">🆕</button>
   <button id="addStoreBtn" class="fab" type="button">＋ お店を登録</button>
@@ -68,6 +67,16 @@
   <div id="sheetBody"></div>
 </section>
 
+<div id="xModal" class="x-modal" role="dialog" aria-modal="true" aria-labelledby="xModalTitle" hidden>
+  <div class="x-card">
+    <img src="icons/icon-192.png" alt="" width="88" height="88">
+    <h2 id="xModalTitle">Xでみんなにシェアして<br>カード集めよう！</h2>
+    <p>在庫の情報は、使う人が多いほど正確になります。友だちにも教えてね🗺</p>
+    <a id="xModalShare" class="btn x-share" href="https://x.com/" target="_blank" rel="noopener noreferrer">𝕏 でシェアする</a>
+    <button id="xModalClose" class="btn ghost" type="button">あとで</button>
+    <button id="xModalToday" class="x-today" type="button">今日はもう表示しない</button>
+  </div>
+</div>
 <div id="toast" class="toast" role="status" hidden></div>
 <div id="demoNote" class="demo-note" hidden>デモモード：データはこの端末の中だけに保存されます</div>
 

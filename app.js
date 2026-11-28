@@ -1077,13 +1077,19 @@ async function main() {
   $("#feedBtn").onclick = openFeed;
   // 開いてすぐ見える「𝕏」ボタン：アプリを紹介する文をXに入れて開く
   $("#xShareFab").href = `https://x.com/intent/post?text=${encodeURIComponent(`みんなでシェアしてカード集めよう！🗺\nワンピースカードの在庫を報告し合える地図アプリ「トレジャーカードマップ」\nコンビニ・本屋・ヨドバシの入荷情報がひと目で分かる！無料で使えるよ\n${TAGS}`)}&url=${encodeURIComponent(APP_URL)}`;
-  // 開いたときに「シェアしてね」の吹き出しを少しだけ出す
-  const bubble = $("#xBubble");
-  bubble.hidden = false;
-  const hideBubble = () => { bubble.hidden = true; };
-  bubble.onclick = () => { hideBubble(); $("#xShareFab").click(); };
-  $("#xShareFab").addEventListener("click", hideBubble);
-  setTimeout(hideBubble, 8000);
+  // 開いたときに画面の真ん中に「Xでシェアしてね」を出す（「今日はもう表示しない」を押した日は出さない）
+  const XKEY = "opmap-xmodal-off";
+  const today = new Date().toLocaleDateString("ja-JP");
+  let off = "";
+  try { off = localStorage.getItem(XKEY) || ""; } catch { /* 保存できない端末でも動かす */ }
+  const modal = $("#xModal");
+  const closeModal = () => { modal.hidden = true; };
+  $("#xModalShare").href = $("#xShareFab").href;
+  $("#xModalShare").addEventListener("click", closeModal);
+  $("#xModalClose").onclick = closeModal;
+  $("#xModalToday").onclick = () => { try { localStorage.setItem(XKEY, today); } catch { /* なにもしない */ } closeModal(); };
+  modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+  if (off !== today && !new URLSearchParams(location.search).get("s")) modal.hidden = false;
   $("#modeCancel").onclick = () => { S.mode = null; $("#modeBanner").hidden = true; };
   $(".sheet-close").onclick = closeSheet;
   loadFukuoka(); // 待たずに先に読み込む（お店の点はすぐ出す）
