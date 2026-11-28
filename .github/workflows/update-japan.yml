@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 140
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: 全国のお店データを取得（3県ごとに保存）
         env:
           AUTO_COMMIT: "1"
