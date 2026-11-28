@@ -2065,7 +2065,7 @@ async function openNotify() {
       toast(S.favs.size ? "通知をONにしました！" : "通知をONにしました。お店を ❤️ お気に入りにすると届きます");
       draw();
     });
-    box.replaceChildren(el("p", {}, on ? "🔔 いまは ON です" : "🔕 いまは OFF です"), btn, on ? kwSection() : null);
+    box.replaceChildren(el("p", {}, on ? "🔔 いまは ON です" : "🔕 いまは OFF です"), btn, ...(on ? [kwSection()] : []));
   };
   draw();
   openSheet(el("h2", { text: "🔔 在庫の通知" }),
