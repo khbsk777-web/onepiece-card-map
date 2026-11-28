@@ -167,6 +167,37 @@ function render() {
   }
   renderPlaces();
   renderFukuoka();
+  updateStockStrip();
+}
+
+// ---------- 画面の上に「100km以内の在庫あり」を近い順に並べる ----------
+const STRIP_KM = 100;
+function updateStockStrip() {
+  const bar = $("#stockStrip");
+  if (!bar) return;
+  const me = S.myPos;
+  if (!me) { bar.hidden = true; document.body.classList.remove("has-strip"); return; }
+  const now = Date.now(), seen = new Set(), list = [];
+  for (const r of S.reports) { // 新しい順
+    if ((r.flags || 0) >= HIDE_FLAGS || seen.has(r.storeId)) continue;
+    if (S.product && r.product !== S.product) continue;
+    seen.add(r.storeId);
+    if (!["in", "low"].includes(effStatus(r)) || now - r.createdAt > STALE_H * 3600e3) continue;
+    const s = S.stores.find((x) => x.id === r.storeId);
+    if (!s) continue;
+    const d = distM(me, s) / 1000;
+    if (d <= STRIP_KM) list.push({ s, r, d });
+  }
+  list.sort((a, b) => a.d - b.d);
+  if (!list.length) { bar.hidden = true; document.body.classList.remove("has-strip"); return; }
+  const km = (d) => (d < 1 ? `${Math.round(d * 1000)}m` : `${d.toFixed(d < 10 ? 1 : 0)}km`);
+  bar.replaceChildren(
+    el("button", { class: "strip-head", type: "button", text: `⭐ ${STRIP_KM}km以内の在庫 ${list.length}件`, onclick: openNearby }),
+    ...list.slice(0, 15).map((x) => el("button", { class: `strip-item ${effStatus(x.r)}`, type: "button",
+      onclick: () => { S.map.setView([x.s.lat, x.s.lng], 16); openStore(x.s.id); } },
+      el("b", { text: x.s.name }), el("span", { text: ` ${km(x.d)}・${timeAgo(x.r.createdAt)}` }))));
+  bar.hidden = false;
+  document.body.classList.add("has-strip");
 }
 
 // ---------- 周辺のお店・駅（OpenStreetMap） ----------
@@ -1285,7 +1316,9 @@ async function main() {
   // 現在地：青い点で表示（ボタンを押したとき＋アプリを開いたとき）
   const showMe = (p) => {
     const ll = [p.coords.latitude, p.coords.longitude];
+    const first = !S.myPos;
     S.myPos = { lat: ll[0], lng: ll[1], t: Date.now() };
+    if (first) updateStockStrip();
     // 緑の円：ここから3km以内のお店なら投稿・報告できる
     if (S.range) S.range.setLatLng(ll); else S.range = L.circle(ll, { radius: POST_RANGE_M, color: "#16a34a", weight: 2, opacity: 0.8, dashArray: "6 6", fillColor: "#22c55e", fillOpacity: 0.08, interactive: false }).addTo(S.map);
     if (S.me) S.me.setLatLng(ll); else S.me = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1, interactive: false }).addTo(S.map);

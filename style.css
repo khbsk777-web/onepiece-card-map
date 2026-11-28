@@ -197,3 +197,16 @@ html[data-theme=dark] .sheet .addr{color:var(--ink)}
 .chip.stock-list{background:#16a34a;border-color:#16a34a;color:#fff;font-weight:800}
 .pinwrap{position:relative}.pinwrap.has-star .pin{transform:rotate(-45deg) scale(1.25);transform-origin:50% 100%}.pin-star{position:absolute;left:10px;top:-24px;font-size:26px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5));pointer-events:none;animation:starpop 1.6s ease-in-out infinite}
 @keyframes starpop{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+/* 上に出る「100km以内の在庫あり」 */
+.stock-strip{position:fixed;top:100px;left:0;right:0;z-index:998;display:flex;gap:6px;overflow-x:auto;padding:6px 10px;background:linear-gradient(#fff8e1,#fffbeb);border-bottom:1px solid #f2c14e;scrollbar-width:none}
+.stock-strip::-webkit-scrollbar{display:none}
+.stock-strip[hidden]{display:none}
+.strip-head{flex:none;border:0;background:#f2c14e;color:#14213d;font-weight:800;font-size:13px;border-radius:999px;padding:6px 12px;white-space:nowrap}
+.strip-item{flex:none;border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:5px 12px;font-size:13px;white-space:nowrap;color:#14213d;max-width:230px;overflow:hidden;text-overflow:ellipsis}
+.strip-item.in{border-color:var(--in)}.strip-item.low{border-color:var(--low)}
+.strip-item span{color:#6b7280}
+body.has-strip .demo-note{top:142px}
+body.has-strip .release-banner{top:150px}
+body.has-strip .leaflet-top{top:74px}
+html[data-theme=dark] .stock-strip{background:#1f2937;border-color:#3b2f0b}
+html[data-theme=dark] .strip-item{background:#111827;color:var(--ink);border-color:#374151}
