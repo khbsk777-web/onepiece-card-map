@@ -333,7 +333,7 @@ async function loadFukuoka() {
   const pack = (els) => els.map(toPlace).filter((p) => p && FK_COLOR[p.kind])
     .map(({ id, kind, name, lat, lng, addr, chain }) => ({ id, kind, name, lat, lng, addr, chain }));
   let list = null, src = "static";
-  for (const url of ["data/fukuoka.json", "https://raw.githubusercontent.com/khbsk777-web/onepiece-card-map/main/data/fukuoka.json"]) {
+  for (const url of ["data/fukuoka.json", "https://raw.githubusercontent.com/treasure-card-map/treasure-card-map.github.io/main/data/fukuoka.json"]) {
     try {
       const res = await fetch(url, { cache: "no-cache" });
       if (res.ok) { const j = await res.json(); if (Array.isArray(j.elements) && j.elements.length) { list = pack(j.elements); break; } }
