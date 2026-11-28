@@ -18,14 +18,14 @@ jobs:
         with:
           node-version: 20
       - name: 前回の時刻を読み出す
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: data/push-state.json
           key: notify-state-${{ github.run_id }}
           restore-keys: notify-state-
       - name: 通知用の鍵を読み出す（GitHubの中の一時保管場所）
         id: keys
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .push-keys.json
           key: push-keys-v1
@@ -37,7 +37,7 @@ jobs:
         run: node scripts/notify.mjs
       - name: 新しく作った鍵をしまう
         if: steps.keys.outputs.cache-hit != 'true' && hashFiles('.push-keys.json') != ''
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .push-keys.json
           key: push-keys-v1
@@ -52,7 +52,7 @@ jobs:
           git push -q
       - name: 前回の時刻を保存
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: data/push-state.json
           key: notify-state-${{ github.run_id }}
