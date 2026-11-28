@@ -36,7 +36,8 @@
 
 <div class="filters" role="toolbar" aria-label="絞り込み">
   <button id="stockListBtn" class="chip stock-list" type="button">📋 在庫リスト</button>
-  <select id="placesMode" class="chip-select" aria-label="周辺のお店の表示"><option value="all">🏪 周辺：全部</option><option value="conv">🏪 コンビニだけ</option><option value="off">周辺：かくす</option></select>
+  <select id="placesMode" class="chip-select" aria-label="周辺のお店の表示"><option value="all">🏪 周辺：全部</option><option value="conv">🏪 コンビニだけ</option><option value="off">🙈 未登録をかくす</option></select>
+  <button id="hideUnregBtn" class="chip" type="button" aria-pressed="false">🙈 未登録をかくす</button>
   <button class="chip on" data-f="all" type="button">すべて</button>
   <button class="chip" data-f="stock" type="button">🟢 在庫あり</button>
   <button class="chip" data-f="today" type="button">🕒 今日の情報</button>

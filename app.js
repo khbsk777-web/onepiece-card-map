@@ -1489,12 +1489,23 @@ function initFilters() {
   const pm = $("#placesMode");
   try { const v = localStorage.getItem("opmap-places-mode"); if (["all", "conv", "off"].includes(v)) S.placesMode = v; } catch {}
   pm.value = S.placesMode;
-  pm.onchange = () => {
-    S.placesMode = pm.value;
+  // 「未登録をかくす」ボタン：報告がまだないお店（アイコン・点）をまとめて消す／出す
+  const hu = $("#hideUnregBtn");
+  let lastShown = S.placesMode === "off" ? "all" : S.placesMode;
+  const syncHide = () => { const on = S.placesMode === "off"; hu.classList.toggle("on", on); hu.setAttribute("aria-pressed", String(on)); hu.textContent = on ? "👁 未登録を表示" : "🙈 未登録をかくす"; };
+  const applyPlaces = () => {
     try { localStorage.setItem("opmap-places-mode", S.placesMode); } catch {}
+    pm.value = S.placesMode; syncHide();
     renderPlaces(); loadPlaces(); renderFukuoka(); loadPrefData();
     if (S.placesMode !== "off" && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます（コンビニ・家電量販店は点で表示中）");
   };
+  pm.onchange = () => { S.placesMode = pm.value; if (S.placesMode !== "off") lastShown = S.placesMode; applyPlaces(); };
+  hu.onclick = () => {
+    S.placesMode = S.placesMode === "off" ? lastShown : "off";
+    applyPlaces();
+    toast(S.placesMode === "off" ? "報告がまだないお店をかくしました（報告があるお店だけ表示）" : "報告がまだないお店も表示します");
+  };
+  syncHide();
   const pf = $("#productFilter");
   pf.replaceChildren(el("option", { value: "", text: "全商品" }), ...Object.entries(PRODUCTS).map(([k, v]) => el("option", { value: k, text: v })));
   pf.onchange = () => { S.product = pf.value; render(); };
