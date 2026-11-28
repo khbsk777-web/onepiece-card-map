@@ -59,7 +59,7 @@ button{cursor:pointer}
 .warn{background:#fef3c7;border-radius:10px;padding:10px;font-size:13px;margin-top:10px}
 .small{font-size:12px;color:var(--muted)}
 .divider{text-align:center;color:var(--muted);font-size:12px;margin:14px 0 0}
-.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.stat{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .stat div{background:#f3f4f6;border-radius:12px;padding:10px;text-align:center}
 .stat b{display:block;font-size:20px}
 .search-results button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #eee;background:#fff;padding:10px 4px}
@@ -122,3 +122,12 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 .doc details{border-bottom:1px solid #eee;padding:8px 0}.doc summary{font-weight:700;cursor:pointer}
 .doc-contact{font-size:18px}
 .doc-foot{text-align:center;color:#6b7280;font-size:12px;padding:20px}
+
+/* 開拓者 */
+.pioneer{margin:-2px 0 8px;color:#8a5a00;font-weight:700;font-size:14px}
+.pioneer-me{background:#fff8e1;border-radius:10px;padding:8px 12px;font-weight:700}
+.pioneer-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #eee}
+.pioneer-row.me{background:#fff8e1}
+.pioneer-row .rank{width:44px;text-align:center;font-weight:800}
+.pioneer-row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pioneer-row .cnt{font-weight:700;color:#14213d}

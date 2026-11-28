@@ -516,19 +516,21 @@ function openNickname(after) {
 }
 async function openAccount() {
   if (!S.user || !S.user.emailVerified || !S.user.nickname) return void ready();
-  const stat = el("div", { class: "stat" }, el("div", {}, el("b", { text: "…" }), "報告"), el("div", {}, el("b", { text: "…" }), "もらった👍"), el("div", {}, el("b", { text: "…" }), "ポイント"));
+  const stat = el("div", { class: "stat" }, el("div", {}, el("b", { text: "…" }), "報告"), el("div", {}, el("b", { text: "…" }), "もらった👍"), el("div", {}, el("b", { text: "…" }), "開拓"), el("div", {}, el("b", { text: "…" }), "ポイント"));
   const nick = el("button", { class: "btn ghost", type: "button", text: "ニックネームを変える" });
   const out = el("button", { class: "btn ghost", type: "button", text: "ログアウト" });
   const del = el("button", { class: "btn ghost danger", type: "button", text: "アカウントを削除" });
   nick.onclick = () => openNickname(openAccount);
   out.onclick = busy(out, async () => { await S.backend.signOut(); closeSheet(); toast("ログアウトしました"); });
   del.onclick = openDeleteAccount;
-  openSheet(el("h2", { text: S.user.nickname }), el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt" }), stat, nick, out,
-    aboutLink(), del);
+  openSheet(el("h2", { text: S.user.nickname }), el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt、開拓1店＝20pt" }), stat, nick, out,
+    el("button", { class: "btn ghost", type: "button", text: "🏴 開拓者ランキング", onclick: openPioneers }), aboutLink(), del);
   try {
     const st = await S.backend.myStats();
     const b = stat.querySelectorAll("b");
-    b[0].textContent = st.reports; b[1].textContent = st.likes; b[2].textContent = st.reports * 10 + st.likes * 5;
+    const pioneered = S.stores.filter((s) => s.createdBy && s.createdBy === S.user.uid).length;
+    b[0].textContent = st.reports; b[1].textContent = st.likes; b[2].textContent = pioneered;
+    b[3].textContent = st.reports * 10 + st.likes * 5 + pioneered * PIONEER_PT;
   } catch (e) { console.warn(e); }
 }
 function aboutLink(text = "ℹ️ このアプリについて・プライバシー・規約") {
@@ -554,7 +556,7 @@ function openDeleteAccount() {
     loadData();
   });
   openSheet(el("h2", { text: "アカウントを削除しますか？" }),
-    el("p", { class: "sub", text: "メールアドレス・ニックネーム・あなたの報告・あなたの写真がすべて消えます。👍や通報の「押した印」は不正防止のため残ります。" }),
+    el("p", { class: "sub", text: "メールアドレス・ニックネーム・あなたの報告・あなたの写真がすべて消えます。👍や通報の「押した印」は不正防止のため残ります。登録したお店はみんなの地図のデータなので残ります。" }),
     yes, no);
 }
 function updateAccountBtn() {
@@ -570,6 +572,36 @@ function xShareBtn(text, url) {
   const href = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
   return el("a", { class: "btn x-share", href, target: "_blank", rel: "noopener noreferrer", text: "𝕏 でシェア" });
 }
+// ---------- 開拓者（そのお店を最初に地図に登録した人） ----------
+const PIONEER_PT = 20; // 開拓1店＝20pt
+function pioneerOf(s) {
+  if (s.pioneer) return s.pioneer;
+  // 古いお店：登録した人の報告が読み込めていれば、その名前を使う
+  const r = S.reports.find((x) => x.uid && x.uid === s.createdBy && x.nickname);
+  return r ? r.nickname : "";
+}
+function pioneerRanking() {
+  const count = new Map();
+  for (const s of S.stores) {
+    const n = pioneerOf(s);
+    if (n) count.set(n, (count.get(n) || 0) + 1);
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1]);
+}
+function openPioneers() {
+  const list = pioneerRanking();
+  const me = S.user?.nickname;
+  const myRank = me ? list.findIndex(([n]) => n === me) : -1;
+  const medal = (i) => ["🥇", "🥈", "🥉"][i] || `${i + 1}位`;
+  openSheet(el("h2", { text: "🏴 開拓者ランキング" }),
+    el("p", { class: "sub", text: "まだだれも登録していないお店を、最初に地図に登録した人が「開拓者」です。1店につき20pt！" }),
+    me ? el("p", { class: "pioneer-me", text: myRank >= 0 ? `あなた（${me}）：${myRank + 1}位・${list[myRank][1]}店` : `あなた（${me}）：まだ開拓なし。緑の円の中の未登録のお店に報告してみよう！` }) : null,
+    ...(list.length ? list.slice(0, 30).map(([n, c], i) => el("div", { class: "pioneer-row" + (n === me ? " me" : "") },
+      el("span", { class: "rank", text: medal(i) }), el("span", { class: "name", text: n }), el("span", { class: "cnt", text: `${c}店` })))
+      : [el("p", { class: "small", text: "まだ開拓者がいません。最初の開拓者になろう！" })]),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+
 function storeShareText(s, reps) {
   const r = [...reps].sort((a, b) => b.createdAt - a.createdAt)[0];
   const st = r ? `${STATUS[r.status] || ""}${itemLabel(r) ? `（${itemLabel(r)}）` : ""}・${timeAgo(r.createdAt)}` : "まだ報告なし";
@@ -586,7 +618,7 @@ async function openStore(id) {
   const gmap = el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" });
   const listBox = el("div");
   const ch = chainOf(s.name);
-  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), `${APP_URL}?s=${encodeURIComponent(s.id)}`));
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), `${APP_URL}?s=${encodeURIComponent(s.id)}`));
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged] = await Promise.all([S.backend.myVotes(ids, "like"), S.backend.myVotes(ids, "flag")]); } catch {}
   }
@@ -896,6 +928,7 @@ function openFeed() {
     return s && (!S.pref || s.pref === S.pref) && (!S.product || r.product === S.product);
   }).slice(0, 40);
   openSheet(el("h2", { text: "🆕 新着の報告" }), el("p", { class: "sub", text: S.pref || "全国" }),
+    el("button", { class: "btn sec", type: "button", text: "🏴 開拓者ランキングを見る", onclick: openPioneers }),
     ...(items.length ? items.map((r) => {
       const s = S.stores.find((x) => x.id === r.storeId);
       return el("div", { class: "feed-item", role: "button", tabindex: "0", onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } },

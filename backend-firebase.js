@@ -85,9 +85,18 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
       const ref = F.doc(F.collection(db, "stores"));
       const b = F.writeBatch(db);
       b.set(F.doc(db, "rateLimits", uid), { lastStore: F.serverTimestamp() }, { merge: true });
-      b.set(ref, { ...s, createdBy: uid, createdAt: F.serverTimestamp() });
-      await b.commit();
-      return { id: ref.id, ...s, createdBy: uid, createdAt: Date.now() };
+      const pioneer = profile?.nickname;
+      b.set(ref, { ...s, ...(pioneer ? { pioneer } : {}), createdBy: uid, createdAt: F.serverTimestamp() });
+      try { await b.commit(); } catch (e) {
+        // サーバーのルールがまだ古いとき：開拓者の名前なしで登録し直す
+        if (!pioneer || e?.code !== "permission-denied") throw e;
+        const b2 = F.writeBatch(db);
+        b2.set(F.doc(db, "rateLimits", uid), { lastStore: F.serverTimestamp() }, { merge: true });
+        b2.set(ref, { ...s, createdBy: uid, createdAt: F.serverTimestamp() });
+        await b2.commit();
+        return { id: ref.id, ...s, createdBy: uid, createdAt: Date.now() };
+      }
+      return { id: ref.id, ...s, ...(pioneer ? { pioneer } : {}), createdBy: uid, createdAt: Date.now() };
     },
     // 決まったIDのお店：なければ作る、あればそのまま使う
     async ensureStore(id, st) {
@@ -97,9 +106,17 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
       const uid = auth.currentUser.uid;
       const b = F.writeBatch(db);
       b.set(F.doc(db, "rateLimits", uid), { lastStore: F.serverTimestamp() }, { merge: true });
-      b.set(ref, { ...st, createdBy: uid, createdAt: F.serverTimestamp() });
-      await b.commit();
-      return { id, ...st, createdBy: uid, createdAt: Date.now() };
+      const pioneer = profile?.nickname;
+      b.set(ref, { ...st, ...(pioneer ? { pioneer } : {}), createdBy: uid, createdAt: F.serverTimestamp() });
+      try { await b.commit(); } catch (e) {
+        if (!pioneer || e?.code !== "permission-denied") throw e;
+        const b2 = F.writeBatch(db);
+        b2.set(F.doc(db, "rateLimits", uid), { lastStore: F.serverTimestamp() }, { merge: true });
+        b2.set(ref, { ...st, createdBy: uid, createdAt: F.serverTimestamp() });
+        await b2.commit();
+        return { id, ...st, createdBy: uid, createdAt: Date.now() };
+      }
+      return { id, ...st, ...(pioneer ? { pioneer } : {}), createdBy: uid, createdAt: Date.now() };
     },
     async addReport(r) {
       const uid = auth.currentUser.uid;

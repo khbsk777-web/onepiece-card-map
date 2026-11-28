@@ -63,7 +63,11 @@ service cloud.firestore {
     match /stores/{storeId} {
       allow read: if true;
       allow create: if verified()
-        && exactKeys(request.resource.data, ['name', 'lat', 'lng', 'address', 'pref', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'lat', 'lng', 'address', 'pref', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'lat', 'lng', 'address', 'pref', 'createdBy', 'createdAt', 'pioneer'])
+        // 開拓者（最初に登録した人）の名前は、本人のニックネームと同じときだけOK（なりすまし防止）
+        && (!('pioneer' in request.resource.data)
+            || request.resource.data.pioneer == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.nickname)
         && str(request.resource.data.name, 1, 40) && safeText(request.resource.data.name)
         && str(request.resource.data.address, 0, 120) && safeText(request.resource.data.address)
         && request.resource.data.pref in prefs()

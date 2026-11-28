@@ -68,6 +68,14 @@ await t("海外座標のお店は拒否", assertFails((async () => {
   b.set(doc(collection(alice, "stores")), { name: "店", lat: 40.7, lng: -74, address: "", pref: "東京都", createdBy: "alice", createdAt: serverTimestamp() });
   return b.commit();
 })()));
+const newStore = (pioneer) => (async () => {
+  const b = writeBatch(alice);
+  b.set(doc(alice, "rateLimits/alice"), { lastStore: serverTimestamp() }, { merge: true });
+  b.set(doc(collection(alice, "stores")), { name: "店", lat: 33.6, lng: 130.4, address: "", pref: "福岡県", createdBy: "alice", createdAt: serverTimestamp(), ...(pioneer ? { pioneer } : {}) });
+  return b.commit();
+})();
+await t("開拓者の名前を他人の名前にするのは拒否", assertFails(newStore("ボブ")));
+await t("開拓者の名前が自分のニックネームならOK", assertSucceeds(newStore("アリス")));
 await t("他人のニックネームは削除できない", assertFails(deleteDoc(doc(verified("bob"), "users/alice"))));
 await t("自分のニックネームは削除できる（アカウント削除）", assertSucceeds(deleteDoc(doc(alice, "users/alice"))));
 await t("想定外の場所は読めない", assertFails(getDoc(doc(guest, "admin/secret"))));
