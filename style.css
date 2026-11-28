@@ -193,3 +193,5 @@ html[data-theme=dark] .x-card h2{color:#fff}html[data-theme=dark] .x-card p{colo
 html[data-theme=dark] .quick-q,html[data-theme=dark] .sheet h2,html[data-theme=dark] .sheet h3{color:var(--ink)}
 html[data-theme=dark] .quick{background:#1f2937}
 html[data-theme=dark] .sheet .addr{color:var(--ink)}
+.two-sel{display:grid;grid-template-columns:2fr 1fr;gap:8px}.two-sel label{margin-top:4px}
+.chip.stock-list{background:#16a34a;border-color:#16a34a;color:#fff;font-weight:800}

@@ -662,35 +662,55 @@ function storeRow(s, r, distKm) {
       el("span", { class: "meta", text: `・${timeAgo(r.createdAt)}` }))
       : el("div", { class: "meta", text: `最近${DAYS}日の報告はまだありません` }));
 }
+// 在庫がある報告のリスト：距離（10〜300km・全国）と並び順（近い順・新しい順）を選べる
 async function openNearby() {
-  openSheet(el("h2", { text: "📍 近くの在庫あり" }), el("p", { class: "sub", text: "現在地を調べています…" }));
-  let me;
-  try { me = await getPos(); } catch {
-    return openSheet(el("h2", { text: "📍 近くの在庫あり" }), el("p", { class: "sub", text: "位置情報を許可すると、近い順に表示できます。" }),
-      el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
-  }
-  // 探す範囲：10kmから300kmまで10km単位（はじめは30km。前に選んだ範囲を覚えておく）
-  let km = 30;
-  try { km = Math.min(300, Math.max(10, Number(localStorage.getItem("opmap-near-km")) || 30)); } catch { /* なにもしない */ }
-  const sel = el("select", { class: "range-sel", "aria-label": "探す範囲" },
-    ...Array.from({ length: 30 }, (_, i) => (i + 1) * 10).map((v) => el("option", { value: String(v), text: `${v}km以内`, selected: v === km })));
+  openSheet(el("h2", { text: "📋 在庫ありの報告リスト" }), el("p", { class: "sub", text: "現在地を調べています…" }));
+  let me = null;
+  try { me = await getPos(); } catch { /* 位置がわからないときは「全国・新しい順」で出す */ }
+  let km = 30, sort = "near";
+  try {
+    const v = localStorage.getItem("opmap-near-km");
+    km = v === "all" ? "all" : Math.min(300, Math.max(10, Number(v) || 30));
+    sort = localStorage.getItem("opmap-near-sort") || "near";
+  } catch { /* なにもしない */ }
+  if (!me) { km = "all"; sort = "new"; }
+  const sel = el("select", { class: "range-sel", "aria-label": "探す範囲", disabled: !me },
+    ...Array.from({ length: 30 }, (_, i) => (i + 1) * 10).map((v) => el("option", { value: String(v), text: `${v}km以内` })),
+    el("option", { value: "all", text: "全国" }));
   sel.value = String(km);
+  const sortSel = el("select", { class: "range-sel", "aria-label": "並び順" },
+    el("option", { value: "near", text: "近い順", disabled: !me }), el("option", { value: "new", text: "新しい順" }));
+  sortSel.value = sort;
   const box = el("div");
   const draw = () => {
     const now = Date.now();
-    const list = S.stores.map((s) => ({ s, r: latestFor(S.reports, s.id, S.product), d: distM(me, s) / 1000 }))
-      .filter((x) => x.r && ["in", "low"].includes(effStatus(x.r)) && now - x.r.createdAt < STALE_H * 3600e3 && x.d <= km)
-      .sort((a, b) => a.d - b.d);
+    const seen = new Set();
+    const list = [];
+    for (const r of S.reports) { // 新しい順に並んでいる
+      if ((r.flags || 0) >= HIDE_FLAGS || seen.has(r.storeId)) continue;
+      if (S.product && r.product !== S.product) continue;
+      seen.add(r.storeId); // お店ごとに一番新しい報告だけ
+      if (!["in", "low"].includes(effStatus(r)) || now - r.createdAt > STALE_H * 3600e3) continue;
+      const s = S.stores.find((x) => x.id === r.storeId);
+      if (!s) continue;
+      const d = me ? distM(me, s) / 1000 : null;
+      if (km !== "all" && d != null && d > km) continue;
+      list.push({ s, r, d });
+    }
+    if (sort === "near" && me) list.sort((a, b) => a.d - b.d);
     box.replaceChildren(
-      el("p", { class: "meta", text: `${list.length}件${list.length > 50 ? "（近い50件を表示）" : ""}` }),
-      ...(list.length ? list.slice(0, 50).map((x) => storeRow(x.s, x.r, x.d)) : [el("p", { class: "small", text: `${km}km以内の在庫情報はまだありません。範囲を広げるか、見つけたら報告してね！` })]));
+      el("p", { class: "meta", text: `${list.length}件${list.length > 50 ? "（50件まで表示）" : ""}` }),
+      ...(list.length ? list.slice(0, 50).map((x) => storeRow(x.s, x.r, x.d))
+        : [el("p", { class: "small", text: `${km === "all" ? "全国" : km + "km以内"}の在庫情報はまだありません。範囲を広げるか、見つけたら報告してね！` })]));
   };
-  sel.onchange = () => { km = Number(sel.value); try { localStorage.setItem("opmap-near-km", String(km)); } catch { /* なにもしない */ } draw(); };
+  sel.onchange = () => { km = sel.value === "all" ? "all" : Number(sel.value); try { localStorage.setItem("opmap-near-km", String(km)); } catch { /* なにもしない */ } draw(); };
+  sortSel.onchange = () => { sort = sortSel.value; try { localStorage.setItem("opmap-near-sort", sort); } catch { /* なにもしない */ } draw(); };
   draw();
-  openSheet(el("h2", { text: "📍 近くの在庫あり" }),
-    el("p", { class: "sub", text: `最近${STALE_H}時間の「在庫あり」「残りわずか」を近い順に表示` }),
-    el("label", { text: "現在地からの範囲" }), sel, box,
-    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+  openSheet(el("h2", { text: "📋 在庫ありの報告リスト" }),
+    el("p", { class: "sub", text: `最近${STALE_H}時間に「在庫あり」「残りわずか」と報告されたお店です（お店ごとに最新の報告）。${me ? "" : "位置情報を許可すると距離で絞りこめます。"}` }),
+    el("div", { class: "two-sel" }, el("div", {}, el("label", { text: "現在地からの距離" }), sel), el("div", {}, el("label", { text: "並び順" }), sortSel)),
+    box,
+    el("button", { class: "btn ghost", type: "button", text: "閉じる", onclick: closeSheet }));
 }
 function openFavorites() {
   const list = S.stores.filter((s) => S.favs.has(s.id));
@@ -1195,7 +1215,7 @@ function openFeed() {
   }).slice(0, 40);
   openSheet(el("h2", { text: "🧭 メニュー" }), el("p", { class: "sub", text: S.pref || "全国" }),
     el("div", { class: "hub" },
-      el("button", { class: "btn sec", type: "button", text: "📍 近くの在庫", onclick: openNearby }),
+      el("button", { class: "btn sec", type: "button", text: "📋 在庫リスト", onclick: openNearby }),
       el("button", { class: "btn sec", type: "button", text: "⭐ お気に入り", onclick: openFavorites }),
       el("button", { class: "btn sec", type: "button", text: "📅 発売日", onclick: openCalendar }),
       el("button", { class: "btn sec", type: "button", text: "🏆 ランキング", onclick: openRanking }),
@@ -1305,6 +1325,7 @@ async function main() {
   $("#accountBtn").onclick = openAccount;
   $("#addStoreBtn").onclick = openAddStore;
   $("#feedBtn").onclick = openFeed;
+  $("#stockListBtn").onclick = openNearby;
   applyTheme();
   window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
   showReleaseBanner();
