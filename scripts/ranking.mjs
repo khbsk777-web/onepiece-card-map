@@ -9,7 +9,7 @@ const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/
 const OUT = "data/ranking.json";
 const TOP = 30;
 const HIDE_FLAGS = 3;
-const PT = { report: 10, like: 5, pioneer: 20, invite: 30 };
+const PT = { report: 10, like: 5, pioneer: 20, invite: 30, mission: 5 };
 const INVITE_CAP = 10; // 1人が1か月に招待ポイントをもらえるのは10人まで
 
 const val = (f) => f == null ? null : f.stringValue ?? f.timestampValue ?? (f.integerValue != null ? Number(f.integerValue) : f.doubleValue ?? null);
@@ -52,11 +52,12 @@ const key = (y, m) => `${y}-${String(m).padStart(2, "0")}`;
 async function rank(y, m) {
   const from = monthStart(y, m).toISOString();
   const to = monthStart(m === 12 ? y + 1 : y, m === 12 ? 1 : m + 1).toISOString();
-  const reports = await readAll("reports", ["uid", "nickname", "likes", "flags", "createdAt"], from, to);
+  const reports = await readAll("reports", ["uid", "nickname", "likes", "flags", "storeId", "createdAt"], from, to);
+  const photos = await readAll("photos", ["uid", "flags", "createdAt"], from, to);
   const stores = await readAll("stores", ["createdBy", "pioneer", "createdAt"], from, to);
   const users = new Map();
   const u = (id) => {
-    if (!users.has(id)) users.set(id, { name: "", reports: 0, likes: 0, pioneer: 0, invites: 0 });
+    if (!users.has(id)) users.set(id, { name: "", reports: 0, likes: 0, pioneer: 0, invites: 0, missions: 0 });
     return users.get(id);
   };
   for (const r of reports) {
@@ -71,6 +72,16 @@ async function rank(y, m) {
     x.pioneer++;
     if (!x.name) x.name = s.pioneer;
   }
+  // 今日のミッション（日本時間の1日ごと）：①1回報告 ②2店で報告 ③写真を1枚投稿。1つ5pt
+  const jday = (iso) => new Date(Date.parse(iso) + 9 * 3600e3).toISOString().slice(0, 10);
+  const days = new Map(); // uid|日 → { stores:Set, photo }
+  const dayOf = (uid, iso) => { const k = uid + "|" + jday(iso); if (!days.has(k)) days.set(k, { uid, stores: new Set(), photo: false }); return days.get(k); };
+  for (const r of reports) if (r.uid && (r.flags || 0) < HIDE_FLAGS && r.storeId) dayOf(r.uid, r.createdAt).stores.add(r.storeId);
+  for (const p of photos) if (p.uid && (p.flags || 0) < HIDE_FLAGS) dayOf(p.uid, p.createdAt).photo = true;
+  for (const d of days.values()) {
+    const n = (d.stores.size >= 1 ? 1 : 0) + (d.stores.size >= 2 ? 1 : 0) + (d.photo ? 1 : 0);
+    if (n && users.has(d.uid)) users.get(d.uid).missions += n;
+  }
   // 招待：この月に招待された人が、この月に1回以上報告したら、招待した人と招待された人の両方にポイント
   const invites = await readAll("invites", ["by", "createdAt"], from, to);
   for (const iv of invites) {
@@ -81,7 +92,7 @@ async function rank(y, m) {
     host.invites++; newbie.invites++;
   }
   const list = [...users.values()].filter((x) => x.name)
-    .map((x) => ({ name: x.name, pt: x.reports * PT.report + x.likes * PT.like + x.pioneer * PT.pioneer + x.invites * PT.invite, reports: x.reports, likes: x.likes, pioneer: x.pioneer, invites: x.invites }))
+    .map((x) => ({ name: x.name, pt: x.reports * PT.report + x.likes * PT.like + x.pioneer * PT.pioneer + x.invites * PT.invite + x.missions * PT.mission, reports: x.reports, likes: x.likes, pioneer: x.pioneer, invites: x.invites, missions: x.missions }))
     .filter((x) => x.pt > 0)
     .sort((a, b) => b.pt - a.pt || b.reports - a.reports);
   console.log(`${key(y, m)}: 報告${reports.length}件・新しいお店${stores.length}店・参加者${list.length}人`);
@@ -93,7 +104,7 @@ const TREND_OUT = "data/trends.json";
 async function trends() {
   const to = new Date().toISOString();
   const from = new Date(Date.now() - 60 * 864e5).toISOString();
-  const reps = await readAll("reports", ["storeId", "status", "flags", "uid", "nickname", "still", "gone", "createdAt"], from, to);
+  const reps = await readAll("reports", ["storeId", "status", "product", "flags", "uid", "nickname", "still", "gone", "createdAt"], from, to);
   await stats(reps, from, to);
   await trust(reps);
   const stores = {};
@@ -106,11 +117,37 @@ async function trends() {
     x.n++; x.wd[t.getUTCDay()]++; x.slot[slot]++;
   }
   for (const id of Object.keys(stores)) if (stores[id].n < 3) delete stores[id]; // 3件以上の報告があるお店だけ
+  // 売り切れまでの目安：「在庫あり」の報告から、同じ商品の「売り切れ」の報告まで何時間だったか（48時間以内のものだけ）
+  const runs = new Map();
+  for (const r of [...reps].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))) {
+    if ((r.flags || 0) >= HIDE_FLAGS || !r.storeId) continue;
+    const k = r.storeId + "|" + (r.product || "");
+    const t = Date.parse(r.createdAt);
+    const cur = runs.get(k) || { start: null, list: [] };
+    if (["in", "low"].includes(r.status)) { if (cur.start == null) cur.start = t; }
+    else if (r.status === "out" && cur.start != null) {
+      const h = (t - cur.start) / 3600e3;
+      if (h > 0 && h <= 48) cur.list.push(h);
+      cur.start = null;
+    }
+    runs.set(k, cur);
+  }
+  const sold = {};
+  for (const [k, v] of runs) {
+    const id = k.split("|")[0];
+    (sold[id] ||= []).push(...v.list);
+  }
+  for (const id of Object.keys(sold)) {
+    const l = sold[id].sort((a, b) => a - b);
+    if (l.length < 2) { delete sold[id]; continue; }
+    const med = l.length % 2 ? l[(l.length - 1) / 2] : (l[l.length / 2 - 1] + l[l.length / 2]) / 2;
+    sold[id] = { h: Math.max(0.5, Math.round(med * 2) / 2), n: l.length };
+  }
   console.log(`入荷の傾向：${Object.keys(stores).length}店（最近60日の報告${reps.length}件から）`);
   let old = {};
   try { old = JSON.parse(readFileSync(TREND_OUT, "utf8")); } catch { /* はじめて */ }
-  if (JSON.stringify(old.stores) === JSON.stringify(stores)) return;
-  writeFileSync(TREND_OUT, JSON.stringify({ updated: new Date().toISOString(), days: 60, stores }) + "\n");
+  if (JSON.stringify(old.stores) === JSON.stringify(stores) && JSON.stringify(old.sold || {}) === JSON.stringify(sold)) return;
+  writeFileSync(TREND_OUT, JSON.stringify({ updated: new Date().toISOString(), days: 60, stores, sold }) + "\n");
 }
 
 // ---- 運営者向けの利用状況（毎日の報告数・報告した人数。数だけで、だれかは入れない） ----

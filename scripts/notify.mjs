@@ -70,6 +70,12 @@ async function openBox(box, privKey) {
   const pt = await subtle.decrypt({ name: "AES-GCM", iv: b64u(iv) }, key, b64u(ct));
   return JSON.parse(new TextDecoder().decode(pt));
 }
+const kana = (v) => String(v || "").normalize("NFKC").toLowerCase().replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/\s+/g, "");
+function distKm(a, b) {
+  const R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
 const hash = (s) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 
 async function main() {
@@ -83,7 +89,7 @@ async function main() {
   try { state = JSON.parse(readFileSync(STATE, "utf8")); } catch { /* はじめて */ }
   const now = new Date().toISOString();
   const since = state.since && Date.parse(state.since) > Date.now() - 6 * 3600e3 ? state.since : new Date(Date.now() - 3600e3).toISOString();
-  const reps = (await runQuery("reports", ["storeId", "status", "product", "itemName", "flags", "createdAt"], since, now))
+  const reps = (await runQuery("reports", ["storeId", "status", "product", "itemName", "setCode", "flags", "createdAt"], since, now))
     .filter((r) => ["in", "low"].includes(r.status) && (r.flags || 0) < HIDE_FLAGS && r.storeId);
   console.log(`新しい在庫ありの報告：${reps.length}件（${since} 〜）`);
   const dead = new Set(state.dead || []);
@@ -92,17 +98,30 @@ async function main() {
     const byStore = new Map();
     for (const r of reps) byStore.set(r.storeId, r); // 同じお店は一番新しい報告だけ
     const names = new Map();
-    for (const id of byStore.keys()) { const f = await getDoc(`stores/${encodeURIComponent(id)}`); if (f) names.set(id, val(f.name)); }
+    const pos = new Map();
+    for (const id of byStore.keys()) {
+      const f = await getDoc(`stores/${encodeURIComponent(id)}`);
+      if (f) { names.set(id, val(f.name)); pos.set(id, { lat: val(f.lat), lng: val(f.lng) }); }
+    }
     for (const sub of await listSubs()) {
       if (dead.has(hash(sub.id + sub.at))) continue;
       let data;
       try { data = await openBox(sub.box, privKey); } catch { bad++; continue; }
       const favs = new Set(Array.isArray(data.f) ? data.f.slice(0, 100) : []);
-      const hits = [...byStore.values()].filter((r) => favs.has(r.storeId) && names.has(r.storeId));
+      // 商品名の通知：登録した言葉（3つまで）が商品名にふくまれ、登録した場所から決めた距離（km）以内のお店
+      const words = (Array.isArray(data.k) ? data.k.slice(0, 3) : []).map(kana).filter((w) => w.length >= 2);
+      const home = data.p && Number.isFinite(data.p.lat) && Number.isFinite(data.p.lng) ? data.p : null;
+      const radius = Math.min(Math.max(Number(data.r) || 30, 5), 300);
+      const favHits = [...byStore.values()].filter((r) => favs.has(r.storeId) && names.has(r.storeId));
+      const kwHits = words.length && home ? [...byStore.values()].filter((r) => names.has(r.storeId) && !favs.has(r.storeId)
+        && words.some((w) => kana([r.itemName, r.setCode].filter(Boolean).join(" ")).includes(w))
+        && distKm(home, pos.get(r.storeId)) <= radius) : [];
+      const hits = [...favHits, ...kwHits];
       if (!hits.length || !data.s?.endpoint) continue;
       const r = hits[hits.length - 1];
       const body = `${names.get(r.storeId)}：${PRODUCTS[r.product] || ""}${r.itemName ? "「" + r.itemName + "」" : ""} ${STATUS[r.status]}${hits.length > 1 ? `（ほか${hits.length - 1}店）` : ""}`;
-      const payload = JSON.stringify({ title: "❤️ お気に入りのお店に在庫の報告！", body, url: `${APP_URL}?s=${encodeURIComponent(r.storeId)}`, tag: "fav-stock" });
+      const title = favHits.length ? "❤️ お気に入りのお店に在庫の報告！" : "🔎 さがしている商品の在庫の報告！";
+      const payload = JSON.stringify({ title, body, url: `${APP_URL}?s=${encodeURIComponent(r.storeId)}`, tag: "stock" });
       try { await webpush.sendNotification(data.s, payload, { TTL: 6 * 3600, urgency: "normal" }); sent++; }
       catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { dead.add(hash(sub.id + sub.at)); gone++; } else console.log("送れませんでした:", e.statusCode || e.message); }
     }

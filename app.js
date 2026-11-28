@@ -1,7 +1,7 @@
 // トレジャーカードマップ（非公式） — 画面の動き
 // 安全のための決まり：ユーザーが入力した文字は必ず textContent で表示し、HTMLとして扱わない。
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
-import { getLang, setLang, startI18n } from "./i18n.js?v=4";
+import { getLang, setLang, startI18n } from "./i18n.js?v=5";
 
 // 他のサイトの中にこのアプリをうめこんで、だまして押させる攻撃（クリックジャッキング）を防ぐ
 if (window.top !== window.self) { try { window.top.location.replace(window.self.location.href); } catch { document.documentElement.style.display = "none"; } }
@@ -610,7 +610,7 @@ async function openAccount() {
   del.onclick = openDeleteAccount;
   const titleLine = el("p", { class: "title-line", text: "称号を読み込み中…" });
   const badgeBox = el("div", { class: "badges" });
-  openSheet(el("h2", { text: S.user.nickname }), titleLine, el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt、開拓1店＝20pt、招待1人＝30pt" }), stat,
+  openSheet(el("h2", { text: S.user.nickname }), titleLine, el("p", { class: "sub", text: "報告1回＝10pt、👍1つ＝5pt、開拓1店＝20pt、招待1人＝30pt、ミッション1つ＝5pt" }), stat,
     el("h3", { class: "mini-h", text: "🎖 バッジ" }), badgeBox,
     el("button", { class: "btn sec", type: "button", text: "🎁 友だちを招待（30pt）", onclick: openInvite }), nick, out,
     el("button", { class: "btn ghost", type: "button", text: "🏆 月間ランキング・表彰", onclick: openRanking }),
@@ -670,7 +670,7 @@ function bestStreak(times) {
 let trendsCache = null;
 async function loadTrends() {
   if (trendsCache) return trendsCache;
-  try { const res = await fetch("data/trends.json", { cache: "no-cache" }); trendsCache = res.ok ? (await res.json()).stores || {} : {}; } catch { trendsCache = {}; }
+  try { const res = await fetch("data/trends.json", { cache: "no-cache" }); const j = res.ok ? await res.json() : {}; trendsCache = j.stores || {}; S.sold = j.sold || {}; } catch { trendsCache = {}; S.sold = {}; }
   return trendsCache;
 }
 const WD = ["日", "月", "火", "水", "木", "金", "土"], SLOT = ["朝", "昼", "夕方", "夜", "深夜"];
@@ -1279,7 +1279,7 @@ async function openStore(id) {
     await S.backend.adminDeleteStore(s.id);
     S.stores = S.stores.filter((x) => x.id !== s.id); closeSheet(); render(); toast("お店を削除しました");
   });
-  loadTrends().then((t) => { trend.textContent = [trendText(t[s.id]), predictText(t[s.id])].filter(Boolean).join("\n"); });
+  loadTrends().then((t) => { const so = S.sold?.[s.id]; trend.textContent = [trendText(t[s.id]), predictText(t[s.id]), so ? `⏳ このお店は、入荷からふだん約${so.h}時間で売り切れています（${so.n}回の記録）` : ""].filter(Boolean).join("\n"); });
   openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, hoursEl, fav, goRow, trend, reportBtn, await lotterySection(s), photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), APP_URL), lineShareBtn(storeShareText(s, reps), APP_URL), adminDel);
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged, S.stilled, S.goned] = await Promise.all(["like", "flag", "still", "gone"].map((k) => S.backend.myVotes(ids, k))); } catch {}
@@ -1636,10 +1636,13 @@ function openFeed() {
       el("button", { class: "btn sec", type: "button", text: "❤️ お気に入り", onclick: openFavorites }),
       el("button", { class: "btn sec", type: "button", text: "📅 発売日", onclick: openCalendar }),
       el("button", { class: "btn sec", type: "button", text: "🔔 在庫の通知", onclick: openNotify }),
+      el("button", { class: "btn sec", type: "button", text: "🎯 今日のミッション", onclick: openMissions }),
       el("button", { class: "btn sec", type: "button", text: "🎟 抽選・予約", onclick: openLotteries }),
+      el("button", { class: "btn sec", type: "button", text: "🏆 大会・イベント", onclick: openEvents }),
       el("button", { class: "btn sec", type: "button", text: "🚗 まわる順番", onclick: openRoute }),
       el("button", { class: "btn sec", type: "button", text: "🖼 今週のまとめ", onclick: openWeekly }),
       el("button", { class: "btn sec", type: "button", text: "🎁 友だち招待", onclick: openInvite }),
+      el("button", { class: "btn sec", type: "button", text: "🖨 QRチラシ", onclick: openFlyer }),
       el("a", { class: "btn sec", href: "area/index.html", style: "text-align:center;text-decoration:none", text: "🗾 都道府県ページ" }),
       el("button", { class: "btn sec", type: "button", text: "🏆 ランキング", onclick: openRanking }),
       el("button", { class: "btn sec", type: "button", text: "🏴 開拓者", onclick: openPioneers }),
@@ -1808,7 +1811,7 @@ function predictText(t) {
 }
 
 // ---------- 抽選・予約ボード ----------
-const LOT_KIND = { lottery: "🎟 抽選", reserve: "📝 予約" };
+const LOT_KIND = { lottery: "🎟 抽選", reserve: "📝 予約", event: "🏆 大会・イベント" };
 let lotCache = null, lotAt = 0;
 async function loadLotteries(force = false) {
   if (!force && lotCache && Date.now() - lotAt < 5 * 60e3) return lotCache;
@@ -1816,6 +1819,11 @@ async function loadLotteries(force = false) {
   return lotCache;
 }
 function md(t) { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; }
+function lotWhen(x) {
+  if (x.kind !== "event") return lotLeft(x.end);
+  const d = Math.ceil((x.start - Date.now()) / 864e5);
+  return x.start > Date.now() ? (d <= 1 ? "⏰ もうすぐ開催" : `あと${d}日で開催`) : "🎉 開催中";
+}
 function lotLeft(end) {
   const h = (end - Date.now()) / 3600e3;
   return h < 24 ? `⏰ 締切まであと${Math.max(1, Math.ceil(h))}時間` : `締切まであと${Math.ceil(h / 24)}日`;
@@ -1836,9 +1844,9 @@ function lotteryItem(x, { withStore = true } = {}) {
   });
   return el("div", { class: "report lot-item" },
     el("div", { class: "row" }, el("div", {}, el("span", { class: "badge soon", text: LOT_KIND[x.kind] || "🎟" }), " ", el("b", { text: x.title })),
-      el("span", { class: "meta", text: lotLeft(x.end) })),
+      el("span", { class: "meta", text: lotWhen(x) })),
     withStore && s ? el("div", { class: "meta lot-store", role: "button", tabindex: "0", text: `🏪 ${s.name}（${s.pref || ""}）`, onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } }) : null,
-    el("div", { class: "meta", text: `受付：${md(x.start)}〜${md(x.end)}・${nickWithTrust(x.nickname)}` }),
+    el("div", { class: "meta", text: `${x.kind === "event" ? "開催" : "受付"}：${md(x.start)}${md(x.start) === md(x.end) ? "" : "〜" + md(x.end)}・${nickWithTrust(x.nickname)}` }),
     x.how ? el("p", { class: "note", text: x.how }) : null,
     el("div", { class: "acts" }, flag, del));
 }
@@ -1847,7 +1855,7 @@ async function openLotteries() {
   openSheet(el("h2", { text: "🎟 抽選・予約ボード" }),
     el("p", { class: "sub", text: `${S.pref || "全国"}の、受付中・これからの抽選や予約です。お店のページから登録できます。` }), box,
     el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
-  const list = (await loadLotteries(true)).filter((x) => (x.flags || 0) < HIDE_FLAGS).filter((x) => {
+  const list = (await loadLotteries(true)).filter((x) => x.kind !== "event" && (x.flags || 0) < HIDE_FLAGS).filter((x) => {
     const s = S.stores.find((v) => v.id === x.storeId);
     return s && (!S.pref || s.pref === S.pref);
   });
@@ -1856,7 +1864,9 @@ async function openLotteries() {
 function dateInput(v) { return el("input", { type: "date", value: new Date(v + 9 * 3600e3).toISOString().slice(0, 10) }); }
 function openLotteryForm(s) {
   if (!ready()) return;
-  const kind = el("select", {}, el("option", { value: "lottery", text: "🎟 抽選" }), el("option", { value: "reserve", text: "📝 予約" }));
+  const kind = el("select", {}, el("option", { value: "lottery", text: "🎟 抽選" }), el("option", { value: "reserve", text: "📝 予約" }), el("option", { value: "event", text: "🏆 大会・イベント" }));
+  const startLabel = el("label", { text: "受付開始" }), endLabel = el("label", { text: "締切" });
+  kind.onchange = () => { const ev = kind.value === "event"; startLabel.textContent = ev ? "開催日（はじまり）" : "受付開始"; endLabel.textContent = ev ? "開催日（おわり・1日だけなら同じ日）" : "締切"; };
   const title = el("input", { type: "text", maxLength: 40, placeholder: "例：最強の戦士 BOX抽選" });
   const how = el("input", { type: "text", maxLength: 100, placeholder: "例：レジで応募用紙を記入。1人1口" });
   const start = dateInput(Date.now()), end = dateInput(Date.now() + 7 * 864e5);
@@ -1867,18 +1877,18 @@ function openLotteryForm(s) {
     { const why = textProblem(t + " " + h); if (why) return toast(why); }
     const st = Date.parse(start.value + "T00:00:00+09:00"), en = Date.parse(end.value + "T23:59:00+09:00");
     if (!st || !en) return toast("日付を選んでね");
-    if (en < st) return toast("締切は受付開始より後にしてね");
-    if (en <= Date.now()) return toast("締切がもう過ぎています");
+    if (en < st) return toast(kind.value === "event" ? "おわりの日は、はじまりの日と同じか後にしてね" : "締切は受付開始より後にしてね");
+    if (en <= Date.now()) return toast(kind.value === "event" ? "もう終わった日付です" : "締切がもう過ぎています");
     if (en > Date.now() + 89 * 864e5) return toast("締切は3か月以内にしてね");
     if (st < Date.now() - 29 * 864e5) return toast("受付開始は1か月以内の日付にしてね");
     const x = await S.backend.addLottery({ storeId: s.id, kind: kind.value, title: t, how: h, start: st, end: en });
     lotCache = [...(lotCache || []), x].sort((a, b) => a.end - b.end);
-    toast("抽選・予約を登録しました。みんなに伝わります！");
+    toast("登録しました。みんなに伝わります！");
     openStore(s.id);
   });
-  openSheet(el("h2", { text: "🎟 抽選・予約を登録" }), el("p", { class: "sub", text: s.name }),
+  openSheet(el("h2", { text: "🎟 抽選・予約・大会を登録" }), el("p", { class: "sub", text: s.name }),
     el("label", { text: "種類" }), kind, el("label", { text: "タイトル（40文字まで）" }), title,
-    el("label", { text: "受付開始" }), start, el("label", { text: "締切" }), end,
+    startLabel, start, endLabel, end,
     el("label", { text: "応募の方法など（100文字まで・任意）" }), how,
     el("p", { class: "small", text: "お店に貼ってあるお知らせなど、本当の情報だけ登録してね。電話番号やURLは書けません。1分に1回まで登録できます。" }),
     save, el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: () => openStore(s.id) }));
@@ -1888,15 +1898,15 @@ async function lotterySection(s) {
   loadLotteries().then((list) => {
     const mine = list.filter((x) => x.storeId === s.id && (x.flags || 0) < HIDE_FLAGS);
     box.replaceChildren(
-      ...(mine.length ? [el("h3", { class: "mini-h", text: "🎟 このお店の抽選・予約" }), ...mine.map((x) => lotteryItem(x, { withStore: false }))] : []),
-      el("button", { class: "btn ghost", type: "button", text: "🎟 抽選・予約を登録", onclick: () => openLotteryForm(s) }));
+      ...(mine.length ? [el("h3", { class: "mini-h", text: "🎟 このお店の抽選・予約・大会" }), ...mine.map((x) => lotteryItem(x, { withStore: false }))] : []),
+      el("button", { class: "btn ghost", type: "button", text: "🎟 抽選・予約・大会を登録", onclick: () => openLotteryForm(s) }));
   });
   return box;
 }
 // お気に入りのお店の抽選が48時間以内に締め切られるとき、開いたときにお知らせ
 async function showLotteryNews() {
   if (!S.favs.size) return;
-  const soon = (await loadLotteries()).filter((x) => S.favs.has(x.storeId) && (x.flags || 0) < HIDE_FLAGS && x.end - Date.now() < 48 * 3600e3);
+  const soon = (await loadLotteries()).filter((x) => x.kind !== "event" && S.favs.has(x.storeId) && (x.flags || 0) < HIDE_FLAGS && x.end - Date.now() < 48 * 3600e3);
   if (!soon.length) return;
   const b = $("#lotNews");
   const s = S.stores.find((v) => v.id === soon[0].storeId);
@@ -1984,7 +1994,8 @@ async function pushSub(create) {
 async function syncPush() {
   const sub = await pushSub(false);
   if (!sub) { setPushOn(false); return false; }
-  await S.backend.savePush(await sealBox({ s: sub.toJSON(), f: [...S.favs].slice(0, 100) }));
+  const kw = kwConf();
+  await S.backend.savePush(await sealBox({ s: sub.toJSON(), f: [...S.favs].slice(0, 100), k: kw.k, r: kw.r, p: kw.p }));
   return true;
 }
 let pushTimer;
@@ -2024,7 +2035,7 @@ async function openNotify() {
       toast(S.favs.size ? "通知をONにしました！" : "通知をONにしました。お店を ❤️ お気に入りにすると届きます");
       draw();
     });
-    box.replaceChildren(el("p", {}, on ? "🔔 いまは ON です" : "🔕 いまは OFF です"), btn);
+    box.replaceChildren(el("p", {}, on ? "🔔 いまは ON です" : "🔕 いまは OFF です"), btn, on ? kwSection() : null);
   };
   draw();
   openSheet(el("h2", { text: "🔔 在庫の通知" }),
@@ -2032,6 +2043,130 @@ async function openNotify() {
     el("p", { class: "small", text: `いまのお気に入り：${S.favs.size}店（最大100店まで通知）` }),
     el("p", { class: "small", style: "white-space:pre-line", text: "・通知は30分〜1時間おきにまとめて届きます（すぐには届きません）。\n・通知の宛先とお気に入りは、端末の中で暗号化してから保存します。ほかの人には読めません。\n・ログインが必要です（いたずら防止のため）。" }),
     el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+
+// ---------- 今日のミッション（1つ5pt。ポイントは6時間ごとの集計でランキングに入る） ----------
+function jstDayStart() { const n = Date.now() + 9 * 3600e3; return n - (n % 864e5) - 9 * 3600e3; }
+async function openMissions() {
+  const me = S.user ? (S.backend.isDemo ? "me" : S.user.uid) : null;
+  const t0 = jstDayStart();
+  const mine = me ? S.reports.filter((r) => r.uid === me && r.createdAt >= t0) : [];
+  const stores = new Set(mine.map((r) => r.storeId));
+  const rows = el("div");
+  const draw = (photo) => {
+    const list = [
+      { ok: stores.size >= 1, name: "在庫を1回報告する", hint: "お店で「📍 いるお店で報告」を押すだけ" },
+      { ok: stores.size >= 2, name: "2つのお店で報告する", hint: `いま${Math.min(stores.size, 2)}/2店` },
+      { ok: photo, name: "お店の写真を1枚投稿する", hint: "売り場や棚の写真（人が写らないように）" },
+    ];
+    const done = list.filter((x) => x.ok).length;
+    rows.replaceChildren(
+      el("p", { class: "mission-total", text: `今日の達成：${done}/3（+${done * 5}pt）` }),
+      ...list.map((x) => el("div", { class: "mission" + (x.ok ? " done" : "") },
+        el("span", { class: "m-ic", text: x.ok ? "✅" : "⬜" }),
+        el("div", {}, el("b", { text: `${x.name}　+5pt` }), el("div", { class: "meta", text: x.hint })))));
+  };
+  draw(false);
+  openSheet(el("h2", { text: "🎯 今日のミッション" }),
+    el("p", { class: "sub", text: "毎日0時（日本時間）に新しくなります。達成したポイントは、6時間ごとの集計で月間ランキングに入ります。" }),
+    me ? rows : el("p", { class: "small", text: "ミッションに参加するにはログインしてね（無料）。" }),
+    me ? null : el("button", { class: "btn", type: "button", text: "ログイン", onclick: () => ready() }),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+  if (me) { try { draw(await S.backend.myPhotoToday(t0)); } catch { /* 読めなくても表示はそのまま */ } }
+}
+
+// ---------- 大会・イベント（抽選・予約ボードと同じしくみ） ----------
+async function openEvents() {
+  const box = el("div", {}, el("p", { class: "small", text: "読み込み中…" }));
+  openSheet(el("h2", { text: "🏆 大会・イベント" }),
+    el("p", { class: "sub", text: `${S.pref || "全国"}のカードショップなどの大会・イベントです。お店のページから登録できます。` }), box,
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+  const list = (await loadLotteries(true)).filter((x) => x.kind === "event" && (x.flags || 0) < HIDE_FLAGS).filter((x) => {
+    const s = S.stores.find((v) => v.id === x.storeId);
+    return s && (!S.pref || s.pref === S.pref);
+  }).sort((a, b) => a.start - b.start);
+  box.replaceChildren(...(list.length ? list.map((x) => lotteryItem(x)) : [el("p", { class: "small", text: "いま登録されている大会・イベントはありません。お店で見つけたら登録してみよう！" })]));
+}
+
+// ---------- 商品名の通知の設定（この端末に保存。送るときは暗号化） ----------
+const KW_KEY = "opmap-push-kw";
+function kwConf() { try { return JSON.parse(localStorage.getItem(KW_KEY)) || { k: [], r: 30, p: null }; } catch { return { k: [], r: 30, p: null }; } }
+function setKwConf(c) { try { localStorage.setItem(KW_KEY, JSON.stringify(c)); } catch { /* なにもしない */ } }
+function kwSection(after) {
+  const c = kwConf();
+  const input = el("input", { type: "text", maxLength: 70, placeholder: "例：最強の戦士、OP-19（3つまで、読点で区切る）", value: c.k.join("、") });
+  const r = el("select", {}, ...[10, 30, 50, 100].map((km) => el("option", { value: String(km), text: `${km}km以内`, selected: c.r === km })));
+  const save = el("button", { class: "btn sec", type: "button", text: "🔎 この内容で通知する" });
+  save.onclick = busy(save, async () => {
+    const words = input.value.split(/[、,，\s]+/).map((w) => clean(w, 20)).filter((w) => w.length >= 2).slice(0, 3);
+    for (const w of words) { const why = textProblem(w); if (why) return toast(why); }
+    let p = c.p;
+    if (words.length) {
+      try { const me = await getPos(); p = { lat: Math.round(me.lat * 20) / 20, lng: Math.round(me.lng * 20) / 20 }; } // 約5kmの細かさに丸めて保存
+      catch { return toast("距離で絞るために、位置情報を許可してね"); }
+    }
+    setKwConf({ k: words, r: Number(r.value), p });
+    if (pushOn()) await syncPush();
+    toast(words.length ? `「${words.join("・")}」の在庫が${r.value}km以内で報告されたらお知らせします` : "商品名の通知をやめました");
+    after?.();
+  });
+  return el("div", { class: "kw-box" },
+    el("h3", { class: "mini-h", text: "🔎 商品名でも通知" }),
+    el("p", { class: "small", text: "お気に入りのお店でなくても、さがしている商品の在庫が近くで報告されたらお知らせします。場所は約5kmの細かさに丸めて、暗号化して保存します。" }),
+    input, r, save);
+}
+
+// ---------- QRコードのチラシ（印刷・配布用の画像を端末の中で作る） ----------
+async function drawFlyer(url) {
+  const { default: qrcode } = await import("./vendor/qrcode/qrcode.mjs");
+  const W = 1240, H = 1754;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  const font = (px, b = true) => `${b ? "800 " : ""}${px}px "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif`;
+  g.fillStyle = "#fffaf0"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#14213d"; g.fillRect(0, 0, W, 300);
+  g.fillStyle = "#ffd166"; g.fillRect(0, 300, W, 14);
+  const logo = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = "icons/icon-512.png"; });
+  if (logo) g.drawImage(logo, 70, 60, 180, 180);
+  g.fillStyle = "#fff"; g.font = font(78); g.fillText("トレジャー", 290, 140);
+  g.fillText("カードマップ", 290, 235);
+  g.textAlign = "center"; g.fillStyle = "#14213d";
+  g.font = font(64); g.fillText("ワンピースカードの在庫", W / 2, 440);
+  g.fillText("みんなで地図に報告！", W / 2, 530);
+  g.font = font(38, false); g.fillStyle = "#334";
+  g.fillText("コンビニ・本屋・家電量販店の入荷情報がひと目で分かる", W / 2, 610);
+  // QRコード
+  const q = qrcode(0, "M"); q.addData(url); q.make();
+  const n = q.getModuleCount(), size = 640, cell = Math.floor(size / (n + 8)), qs = cell * (n + 8);
+  const qx = (W - qs) / 2, qy = 680;
+  g.fillStyle = "#fff"; g.fillRect(qx, qy, qs, qs);
+  g.fillStyle = "#000";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) g.fillRect(qx + (x + 4) * cell, qy + (y + 4) * cell, cell, cell);
+  g.strokeStyle = "#14213d"; g.lineWidth = 6; g.strokeRect(qx - 3, qy - 3, qs + 6, qs + 6);
+  g.fillStyle = "#e63946"; g.font = font(44); g.fillText("📱 スマホのカメラで読み取ってね", W / 2, qy + qs + 80);
+  g.textAlign = "left"; g.fillStyle = "#14213d"; g.font = font(40, false);
+  ["⭐ 在庫ありのお店が地図でわかる", "🔔 お気に入りのお店の入荷を通知", "🏆 報告でポイント・月間ランキング"].forEach((t, i) => g.fillText(t, 200, qy + qs + 170 + i * 66));
+  g.fillStyle = "#14213d"; g.fillRect(0, H - 110, W, 110);
+  g.fillStyle = "#fff"; g.textAlign = "center"; g.font = font(30, false);
+  g.fillText("無料・登録なしで見られます／ファンが作った非公式アプリです", W / 2, H - 45);
+  return c;
+}
+async function openFlyer() {
+  const url = S.user?.uid && !S.backend.isDemo ? `${APP_URL}?ref=${encodeURIComponent(S.user.uid)}` : APP_URL;
+  const box = el("div", {}, el("p", { class: "small", text: "作成中…" }));
+  openSheet(el("h2", { text: "🖨 QRコードのチラシ" }),
+    el("p", { class: "sub", text: S.user ? "あなたの招待リンク入りのチラシです。読み取った人が登録して報告すると、2人に30ptずつ入ります。" : "アプリのQRコード入りのチラシです。ログインすると、招待リンク入りのチラシになります。" }),
+    box, el("p", { class: "small", text: "お店に貼るときは、必ずお店の人の許可をもらってね。" }),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+  const c = await drawFlyer(url);
+  const save = el("button", { class: "btn", type: "button", text: "📤 チラシを保存・シェア" });
+  save.onclick = busy(save, async () => {
+    const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+    const file = new File([blob], "treasure-card-map-flyer.png", { type: "image/png" });
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); } catch { /* キャンセル */ } }
+    else { const a = el("a", { href: URL.createObjectURL(blob), download: "treasure-card-map-flyer.png" }); document.body.append(a); a.click(); a.remove(); toast("チラシを保存しました（A4で印刷できます）"); }
+  });
+  box.replaceChildren(el("img", { src: c.toDataURL("image/png"), alt: "QRコードのチラシ", style: "width:100%;border-radius:8px;box-shadow:0 1px 6px #0003" }), save);
 }
 
 // ---------- 英語表示の切りかえ ----------

@@ -122,6 +122,7 @@ export function createDemoBackend() {
     async flagLottery(id) { const x = (d.lotteries || []).find((v) => v.id === id); if (x) x.flags++; save(); },
     async claimInvite() {},
     async savePush() {},
+    async myPhotoToday() { return false; },
     async deletePush() {},
     async myInviteCount() { return 0; },
     async myStats() {

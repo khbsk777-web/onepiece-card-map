@@ -74,6 +74,10 @@ const D = {
   "表示：自動": "Theme: Auto", "🔠 文字：ふつう": "🔠 Text: normal", "🔠 文字：大きい": "🔠 Text: large",
   "🔥 ヒート：オン": "🔥 Heatmap: on", "🔥 ヒート：オフ": "🔥 Heatmap: off",
   "住所未登録": "No address",
+  "🎯 今日のミッション": "🎯 Daily missions", "🏆 大会・イベント": "🏆 Tournaments & events", "🖨 QRチラシ": "🖨 QR flyer",
+  "🔔 在庫の通知": "🔔 Stock alerts", "🔔 通知をONにする": "🔔 Turn on alerts", "🔕 通知をOFFにする": "🔕 Turn off alerts",
+  "🔎 商品名でも通知": "🔎 Alerts by product name", "🔎 この内容で通知する": "🔎 Save alert", "📤 チラシを保存・シェア": "📤 Save / share flyer",
+  "🖨 QRコードのチラシ": "🖨 QR code flyer", "🎟 抽選・予約・大会を登録": "🎟 Add lottery / pre-order / event", "🏆 大会・イベント": "🏆 Tournament / event",
 };
 // 数字などが入る文
 const P = [

@@ -237,6 +237,12 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
         tx.update(ref, { flags: (p.data().flags || 0) + 1 });
       });
     },
+    // 今日の写真があるか（ミッション用）
+    async myPhotoToday(since) {
+      const q = F.query(F.collection(db, "photos"), F.where("uid", "==", auth.currentUser.uid), F.limit(50));
+      const snap = await F.getDocs(q);
+      return snap.docs.some((d) => ts(d.data().createdAt) >= since);
+    },
     // ---- 通知の宛先（端末で暗号化ずみ） ----
     async savePush(box) {
       await F.setDoc(F.doc(db, "pushSubs", auth.currentUser.uid), { box, updatedAt: F.serverTimestamp() });

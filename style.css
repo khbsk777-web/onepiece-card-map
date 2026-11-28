@@ -266,3 +266,8 @@ body.has-strip .release-banner.lot-news{top:242px}
 .lot-item .lot-store{cursor:pointer;text-decoration:underline}
 .lot-sec{margin:8px 0}
 .trend{white-space:pre-line}
+/* 今日のミッション・商品名の通知 */
+.mission{display:flex;gap:10px;align-items:center;background:var(--card,#fff);border-radius:10px;padding:10px 12px;margin:8px 0;box-shadow:0 1px 3px #0001}
+.mission.done{opacity:.75}.mission .m-ic{font-size:22px}
+.mission-total{font-weight:800;font-size:16px}
+.kw-box{margin-top:14px;display:flex;flex-direction:column;gap:8px}

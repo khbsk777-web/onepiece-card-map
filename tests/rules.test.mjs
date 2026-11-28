@@ -151,6 +151,8 @@ await t("他人の名前の抽選登録は拒否", assertFails(postLot(lot({ nic
 await t("決まっていない種類は拒否", assertFails(postLot(lot({ kind: "sale" }))));
 await t("正しい抽選登録はOK", assertSucceeds(postLot(lot())));
 await t("1分以内の抽選の連続登録は拒否", assertFails(postLot(lot())));
+await new Promise((r) => setTimeout(r, 61000));
+await t("大会・イベントも登録できる", assertSucceeds(postLot(lot({ kind: "event", title: "フラッグシップバトル" }))));
 await t("抽選はだれでも見られる", assertSucceeds(getDocs(collection(guest, "lotteries"))));
 // ---- 招待 ----
 await env.withSecurityRulesDisabled(async (c) => {
