@@ -1,0 +1,37 @@
+name: お気に入りのお店の在庫を通知
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "11,41 * * * *" # 30分ごと
+permissions:
+  contents: read
+concurrency:
+  group: notify
+  cancel-in-progress: false
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 前回の時刻を読み出す
+        uses: actions/cache/restore@v4
+        with:
+          path: data/push-state.json
+          key: notify-state-${{ github.run_id }}
+          restore-keys: notify-state-
+      - name: 通知を送る道具を入れる
+        run: npm i --no-save web-push@3
+      - name: 通知を送る
+        env:
+          PUSH_KEYS: ${{ secrets.PUSH_KEYS }}
+        run: node scripts/notify.mjs
+      - name: 前回の時刻を保存
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/push-state.json
+          key: notify-state-${{ github.run_id }}

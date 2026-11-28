@@ -203,6 +203,7 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
           if (col === "photos") await this.deletePhoto(d.id); else await F.deleteDoc(d.ref);
         }
       }
+      await F.deleteDoc(F.doc(db, "pushSubs", u.uid)).catch(() => {});
       await F.deleteDoc(F.doc(db, "users", u.uid));
       profile = null;
       await A.deleteUser(u);
@@ -236,6 +237,11 @@ export async function createFirebaseBackend(config, appCheckSiteKey) {
         tx.update(ref, { flags: (p.data().flags || 0) + 1 });
       });
     },
+    // ---- 通知の宛先（端末で暗号化ずみ） ----
+    async savePush(box) {
+      await F.setDoc(F.doc(db, "pushSubs", auth.currentUser.uid), { box, updatedAt: F.serverTimestamp() });
+    },
+    async deletePush() { await F.deleteDoc(F.doc(db, "pushSubs", auth.currentUser.uid)); },
     // ---- 招待：はじめてニックネームを作った直後に1回だけ記録（失敗しても気にしない） ----
     async claimInvite(by) {
       const uid = auth.currentUser?.uid;

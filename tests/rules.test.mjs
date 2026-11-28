@@ -163,6 +163,12 @@ await t("他人の招待記録は作れない", assertFails(setDoc(doc(erin, "in
 await t("古いアカウントは招待を受けられない", assertFails(setDoc(doc(verified("old1"), "invites/old1"), { by: "bob", createdAt: serverTimestamp() })));
 await t("新しい人は招待を1回受けられる", assertSucceeds(setDoc(doc(erin, "invites/erin"), { by: "bob", createdAt: serverTimestamp() })));
 await t("招待を2回目に書きかえは拒否", assertFails(setDoc(doc(erin, "invites/erin"), { by: "old1", createdAt: serverTimestamp() })));
+// ---- 通知の宛先 ----
+await t("暗号化した通知の宛先は保存できる", assertSucceeds(setDoc(doc(erin, "pushSubs/erin"), { box: "v1.abc.def.ghi", updatedAt: serverTimestamp() })));
+await t("暗号化していない宛先は拒否", assertFails(setDoc(doc(erin, "pushSubs/erin"), { box: '{"endpoint":"https://x"}', updatedAt: serverTimestamp() })));
+await t("他人の通知の宛先は書けない", assertFails(setDoc(doc(erin, "pushSubs/bob"), { box: "v1.a.b.c", updatedAt: serverTimestamp() })));
+await t("他人の通知の宛先は消せない", assertFails(deleteDoc(doc(bob, "pushSubs/erin"))));
+await t("自分の通知の宛先は消せる", assertSucceeds(deleteDoc(doc(erin, "pushSubs/erin"))));
 await t("想定外の場所は読めない", assertFails(getDoc(doc(guest, "admin/secret"))));
 
 for (const r of results) console.log(r.join(" "));

@@ -4,7 +4,7 @@
   "description": "ワンピースカードの入荷・在庫情報をみんなで共有する非公式マップ",
   "start_url": "./",
   "scope": "./",
-  "display": "browser",
+  "display": "standalone",
   "background_color": "#14213d",
   "theme_color": "#14213d",
   "lang": "ja",

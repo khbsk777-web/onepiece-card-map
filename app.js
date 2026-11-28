@@ -119,7 +119,7 @@ function errMsg(e) {
 // お気に入りのお店（この端末だけに保存。ログイン不要）
 const FAV_KEY = "opmap-favs";
 function loadFavs() { try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY)) || []); } catch { return new Set(); } }
-function saveFavs() { try { localStorage.setItem(FAV_KEY, JSON.stringify([...S.favs].slice(0, 200))); } catch { /* なにもしない */ } }
+function saveFavs() { try { localStorage.setItem(FAV_KEY, JSON.stringify([...S.favs].slice(0, 200))); } catch { /* なにもしない */ } pushFavsChanged(); }
 // フォロー（この端末だけに保存。uid → ニックネーム）
 const FOLLOW_KEY = "opmap-follows";
 function loadFollows() { try { return JSON.parse(localStorage.getItem(FOLLOW_KEY)) || {}; } catch { return {}; } }
@@ -1635,6 +1635,7 @@ function openFeed() {
       el("button", { class: "btn sec", type: "button", text: "📋 在庫リスト", onclick: openNearby }),
       el("button", { class: "btn sec", type: "button", text: "❤️ お気に入り", onclick: openFavorites }),
       el("button", { class: "btn sec", type: "button", text: "📅 発売日", onclick: openCalendar }),
+      el("button", { class: "btn sec", type: "button", text: "🔔 在庫の通知", onclick: openNotify }),
       el("button", { class: "btn sec", type: "button", text: "🎟 抽選・予約", onclick: openLotteries }),
       el("button", { class: "btn sec", type: "button", text: "🚗 まわる順番", onclick: openRoute }),
       el("button", { class: "btn sec", type: "button", text: "🖼 今週のまとめ", onclick: openWeekly }),
@@ -1945,6 +1946,92 @@ async function openInvite() {
     el("p", { class: "small", text: "※ リンクには、あなたを見分けるための番号（ユーザーID）が入ります。メールアドレスは入りません。" }),
     el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openAccount }));
   try { count.textContent = await S.backend.myInviteCount(); } catch { count.textContent = "-"; }
+}
+
+// ---------- 在庫の通知（お気に入りのお店に「在庫あり」の報告が来たらお知らせ） ----------
+// しくみ：通知の宛先とお気に入りを、この端末の中で暗号化してから保存する。
+//         中身を読めるのは、通知を送る自動の仕組み（GitHub Actions）だけ。
+const PUSH_VAPID = "BAjOBoC35H8ly_ra_3ipozIODpXHDjLIVd8gVMWH36QNpjPJms3ZSxhgh4j8m7QEdgZ7oldkg7J9L7NDmlyQoDI";
+const PUSH_BOX = "BAiGrZ4v3AtE_vdMkGwyPqZE-WB66CRR4UFB3-VhAmkJ5i8xcmSRnLGNwOtHjGEhar9J6rp-5ncgWF_mzWyRtug";
+const PUSH_KEY = "opmap-push";
+const b64u = {
+  enc: (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
+  dec: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)),
+};
+async function sealBox(obj) {
+  const { subtle } = crypto;
+  const serverPub = await subtle.importKey("raw", b64u.dec(PUSH_BOX), { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const eph = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const bits = await subtle.deriveBits({ name: "ECDH", public: serverPub }, eph.privateKey, 256);
+  const hk = await subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]);
+  const key = await subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: new TextEncoder().encode("tcm-push-v1") }, hk, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return ["v1", b64u.enc(await subtle.exportKey("raw", eph.publicKey)), b64u.enc(iv), b64u.enc(ct)].join(".");
+}
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && !!crypto?.subtle;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = () => window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
+function pushOn() { try { return localStorage.getItem(PUSH_KEY) === "1"; } catch { return false; } }
+function setPushOn(v) { try { localStorage.setItem(PUSH_KEY, v ? "1" : "0"); } catch { /* なにもしない */ } }
+async function pushSub(create) {
+  const reg = await navigator.serviceWorker.register("sw.js");
+  await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub && create) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u.dec(PUSH_VAPID) });
+  return sub;
+}
+async function syncPush() {
+  const sub = await pushSub(false);
+  if (!sub) { setPushOn(false); return false; }
+  await S.backend.savePush(await sealBox({ s: sub.toJSON(), f: [...S.favs].slice(0, 100) }));
+  return true;
+}
+let pushTimer;
+function pushFavsChanged() {
+  if (!pushOn() || !S.user?.emailVerified || !pushSupported()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => syncPush().catch((e) => console.warn(e)), 3000);
+}
+async function openNotify() {
+  const box = el("div");
+  const draw = () => {
+    if (!pushSupported()) {
+      box.replaceChildren(el("p", { class: "small", text: isIOS() && !isStandalone()
+        ? "iPhoneで通知を受け取るには、先にホーム画面に追加してね：Safariの「共有」ボタン →「ホーム画面に追加」→ ホーム画面のトレカマップから開いて、もう一度ここへ。"
+        : "この端末・ブラウザは通知に対応していません。" }));
+      return;
+    }
+    if (isIOS() && !isStandalone()) {
+      box.replaceChildren(el("p", { class: "small", text: "iPhoneは、ホーム画面に追加したアプリからだけ通知を受け取れます。Safariの「共有」→「ホーム画面に追加」をして、ホーム画面のトレカマップから開いてね。" }));
+      return;
+    }
+    const on = pushOn() && Notification.permission === "granted";
+    const btn = el("button", { class: on ? "btn ghost" : "btn", type: "button", text: on ? "🔕 通知をOFFにする" : "🔔 通知をONにする" });
+    btn.onclick = busy(btn, async () => {
+      if (on) {
+        const sub = await pushSub(false).catch(() => null);
+        if (sub) await sub.unsubscribe().catch(() => {});
+        if (S.user) await S.backend.deletePush().catch(() => {});
+        setPushOn(false); toast("通知をOFFにしました"); return draw();
+      }
+      if (!ready()) return;
+      const p = await Notification.requestPermission();
+      if (p !== "granted") return toast("通知が許可されませんでした（設定から許可できます）");
+      await pushSub(true);
+      setPushOn(true);
+      await syncPush();
+      toast(S.favs.size ? "通知をONにしました！" : "通知をONにしました。お店を ❤️ お気に入りにすると届きます");
+      draw();
+    });
+    box.replaceChildren(el("p", {}, on ? "🔔 いまは ON です" : "🔕 いまは OFF です"), btn);
+  };
+  draw();
+  openSheet(el("h2", { text: "🔔 在庫の通知" }),
+    el("p", { class: "sub", text: "❤️ お気に入りのお店に「在庫あり」の報告が来たら、スマホにお知らせします。" }), box,
+    el("p", { class: "small", text: `いまのお気に入り：${S.favs.size}店（最大100店まで通知）` }),
+    el("p", { class: "small", style: "white-space:pre-line", text: "・通知は30分〜1時間おきにまとめて届きます（すぐには届きません）。\n・通知の宛先とお気に入りは、端末の中で暗号化してから保存します。ほかの人には読めません。\n・ログインが必要です（いたずら防止のため）。" }),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
 }
 
 // ---------- 英語表示の切りかえ ----------

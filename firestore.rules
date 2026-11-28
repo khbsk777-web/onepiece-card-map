@@ -294,6 +294,17 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ---------- 通知の宛先（端末の中で暗号化した文字だけ。中身を読めるのは通知を送る仕組みだけ） ----------
+    match /pushSubs/{uid} {
+      allow read: if true;
+      allow create, update: if verified() && isMe(uid)
+        && exactKeys(request.resource.data, ['box', 'updatedAt'])
+        && request.resource.data.box is string && request.resource.data.box.size() <= 12000
+        && request.resource.data.box.matches('^v1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$')
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isMe(uid);
+    }
+
     // それ以外の場所はすべて禁止
     match /{document=**} {
       allow read, write: if false;

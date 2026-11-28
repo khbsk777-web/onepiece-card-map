@@ -121,6 +121,8 @@ export function createDemoBackend() {
     async deleteLottery(id) { d.lotteries = (d.lotteries || []).filter((x) => x.id !== id); save(); },
     async flagLottery(id) { const x = (d.lotteries || []).find((v) => v.id === id); if (x) x.flags++; save(); },
     async claimInvite() {},
+    async savePush() {},
+    async deletePush() {},
     async myInviteCount() { return 0; },
     async myStats() {
       const mine = d.reports.filter((r) => r.uid === "me");
