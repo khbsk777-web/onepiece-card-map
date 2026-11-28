@@ -4,7 +4,7 @@ import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
 
 // ---------- 定数 ----------
 export const PRODUCTS = { booster: "ブースターパック", extra: "エクストラブースター", premium: "プレミアムブースター", starter: "スタートデッキ", other: "その他" };
-export const STATUS = { in: "在庫あり", low: "残りわずか", out: "売り切れ", soon: "入荷予定", na: "取り扱いなし" };
+export const STATUS = { in: "⭐ 在庫あり", low: "⭐ 残りわずか", out: "売り切れ", soon: "入荷予定", na: "取り扱いなし" };
 export const SALE = { pack: "バラ売り", box: "BOX", lottery: "抽選", other: "その他" };
 export const LIMIT = { none: "制限なし", p1: "1人1パック", p2: "1人2パック", p3: "1人3パック", p5: "1人5パック", p10: "1人10パック", box1: "1人1BOX" };
 // 「もうなかった」が「まだあった」より多い報告は、売り切れとして扱う
@@ -157,9 +157,13 @@ function render() {
     const cls = r ? effStatus(r) : "none";
     const stale = r && now - r.createdAt > STALE_H * 3600e3;
     const ch = chainOf(s.name);
-    const wrap = el("div", { class: "pinwrap" }, el("div", { class: `pin ${cls}${stale ? " stale" : ""}` }), ch ? cvsBadge(ch) : null);
+    // 在庫あり（最近の報告）は⭐マークでひと目で分かるように
+    const star = (cls === "in" || cls === "low") && !stale;
+    const wrap = el("div", { class: "pinwrap" + (star ? " has-star" : "") }, el("div", { class: `pin ${cls}${stale ? " stale" : ""}` }),
+      star ? el("span", { class: "pin-star", text: "⭐" }) : null, ch ? cvsBadge(ch) : null);
     const icon = L.divIcon({ className: "", html: wrap, iconSize: [26, 26], iconAnchor: [13, 26] });
-    L.marker([s.lat, s.lng], { icon, title: s.name, keyboard: true }).on("click", () => openStore(s.id)).addTo(S.layer);
+    if (star && !S.map.getPane("stock")) S.map.createPane("stock").style.zIndex = 660; // 在庫ありはほかのお店より前に出す
+    L.marker([s.lat, s.lng], { icon, title: s.name, keyboard: true, ...(star ? { pane: "stock" } : {}) }).on("click", () => openStore(s.id)).addTo(S.layer);
   }
   renderPlaces();
   renderFukuoka();
@@ -656,7 +660,7 @@ function storeRow(s, r, distKm) {
   const st = r ? effStatus(r) : null;
   return el("div", { class: "feed-item", role: "button", tabindex: "0", onclick: () => { S.map.setView([s.lat, s.lng], 16); openStore(s.id); } },
     el("div", { class: "row", style: "display:flex;justify-content:space-between;gap:8px" },
-      el("b", { text: (S.favs.has(s.id) ? "⭐ " : "") + s.name }), el("span", { class: "meta", text: distKm != null ? `${distKm < 1 ? Math.round(distKm * 1000) + "m" : distKm.toFixed(1) + "km"}` : "" })),
+      el("b", { text: (S.favs.has(s.id) ? "❤️ " : "") + s.name }), el("span", { class: "meta", text: distKm != null ? `${distKm < 1 ? Math.round(distKm * 1000) + "m" : distKm.toFixed(1) + "km"}` : "" })),
     r ? el("div", {}, el("span", { class: `badge ${st}`, text: STATUS[st] }), " ", itemLabel(r) || PRODUCTS[r.product] || "",
       r.limit && r.limit !== "none" ? el("span", { class: "meta", text: `・${LIMIT[r.limit]}` }) : null,
       el("span", { class: "meta", text: `・${timeAgo(r.createdAt)}` }))
@@ -715,10 +719,10 @@ async function openNearby() {
 function openFavorites() {
   const list = S.stores.filter((s) => S.favs.has(s.id));
   const me = S.myPos;
-  openSheet(el("h2", { text: "⭐ お気に入りのお店" }),
-    el("p", { class: "sub", text: "お店の画面の「☆」で追加できます（この端末に保存）。" }),
+  openSheet(el("h2", { text: "❤️ お気に入りのお店" }),
+    el("p", { class: "sub", text: "お店の画面の「🤍」で追加できます（この端末に保存）。" }),
     ...(list.length ? list.map((s) => storeRow(s, latestFor(S.reports, s.id, S.product), me ? distM(me, s) / 1000 : null))
-      : [el("p", { class: "small", text: "まだお気に入りがありません。よく行くお店を開いて「☆ お気に入り」を押してね。" })]),
+      : [el("p", { class: "small", text: "まだお気に入りがありません。よく行くお店を開いて「🤍 お気に入り」を押してね。" })]),
     el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
 }
 
@@ -872,10 +876,10 @@ async function openStore(id) {
   const gmap = el("a", { class: "btn ghost", href: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`, target: "_blank", rel: "noopener noreferrer", text: "🧭 地図アプリで道案内", style: "text-align:center;text-decoration:none" });
   const listBox = el("div");
   const ch = chainOf(s.name);
-  const fav = el("button", { class: "fav-btn" + (S.favs.has(s.id) ? " on" : ""), type: "button", text: S.favs.has(s.id) ? "★ お気に入り" : "☆ お気に入り" });
+  const fav = el("button", { class: "fav-btn" + (S.favs.has(s.id) ? " on" : ""), type: "button", text: S.favs.has(s.id) ? "❤️ お気に入り" : "🤍 お気に入り" });
   fav.onclick = () => {
     S.favs.has(s.id) ? S.favs.delete(s.id) : S.favs.add(s.id); saveFavs();
-    fav.classList.toggle("on", S.favs.has(s.id)); fav.textContent = S.favs.has(s.id) ? "★ お気に入り" : "☆ お気に入り";
+    fav.classList.toggle("on", S.favs.has(s.id)); fav.textContent = S.favs.has(s.id) ? "❤️ お気に入り" : "🤍 お気に入り";
     toast(S.favs.has(s.id) ? "お気に入りに追加しました" : "お気に入りから外しました");
     if (S.filter === "fav") render();
   };
@@ -1216,7 +1220,7 @@ function openFeed() {
   openSheet(el("h2", { text: "🧭 メニュー" }), el("p", { class: "sub", text: S.pref || "全国" }),
     el("div", { class: "hub" },
       el("button", { class: "btn sec", type: "button", text: "📋 在庫リスト", onclick: openNearby }),
-      el("button", { class: "btn sec", type: "button", text: "⭐ お気に入り", onclick: openFavorites }),
+      el("button", { class: "btn sec", type: "button", text: "❤️ お気に入り", onclick: openFavorites }),
       el("button", { class: "btn sec", type: "button", text: "📅 発売日", onclick: openCalendar }),
       el("button", { class: "btn sec", type: "button", text: "🏆 ランキング", onclick: openRanking }),
       el("button", { class: "btn sec", type: "button", text: "🏴 開拓者", onclick: openPioneers }),

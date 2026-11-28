@@ -195,3 +195,5 @@ html[data-theme=dark] .quick{background:#1f2937}
 html[data-theme=dark] .sheet .addr{color:var(--ink)}
 .two-sel{display:grid;grid-template-columns:2fr 1fr;gap:8px}.two-sel label{margin-top:4px}
 .chip.stock-list{background:#16a34a;border-color:#16a34a;color:#fff;font-weight:800}
+.pinwrap{position:relative}.pinwrap.has-star .pin{transform:rotate(-45deg) scale(1.25);transform-origin:50% 100%}.pin-star{position:absolute;left:10px;top:-24px;font-size:26px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5));pointer-events:none;animation:starpop 1.6s ease-in-out infinite}
+@keyframes starpop{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
