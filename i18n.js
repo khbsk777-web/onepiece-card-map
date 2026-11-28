@@ -96,7 +96,7 @@ function tr(s) {
 function walk(root) {
   if (root.nodeType === 3) { const v = tr(root.nodeValue); if (v != null) root.nodeValue = v; return; }
   if (root.nodeType !== 1) return;
-  if (root.matches?.(".note, .addr, [data-no-tr]")) return; // みんなが書いた文は変えない
+  if (root.matches?.(".note, .addr, [data-no-tr], #map")) return; // みんなが書いた文は変えない
   for (const a of ["placeholder", "aria-label", "title"]) {
     const v = root.getAttribute?.(a);
     if (v) { const n = tr(v); if (n != null) root.setAttribute(a, n); }
@@ -108,11 +108,30 @@ export function startI18n() {
   if (getLang() !== "en") return;
   document.documentElement.lang = "en";
   walk(document.body);
-  // 新しく出てきた部分も英語にする
-  new MutationObserver((list) => {
-    for (const m of list) {
-      if (m.type === "characterData") { const v = tr(m.target.nodeValue); if (v != null && v !== m.target.nodeValue) m.target.nodeValue = v; }
-      else m.addedNodes.forEach(walk);
+  // 新しく出てきた部分も英語にする。
+  // ・自分で書きかえた分には反応しない（止めてから書きかえて、また見はじめる）→ 無限ループにならない
+  // ・地図の中（ピン・タイル）は数が多く、ことばもないので見ない
+  // ・まとめて1コマに1回だけ処理する
+  const OPTS = { childList: true, subtree: true, characterData: true };
+  let pending = new Set(), queued = false;
+  const flush = () => {
+    queued = false;
+    obs.disconnect();
+    try {
+      for (const n of pending) if (n.isConnected && !n.parentElement?.closest?.("#map")) walk(n);
+    } finally {
+      pending = new Set();
+      obs.takeRecords();
+      obs.observe(document.body, OPTS);
     }
-  }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  };
+  const obs = new MutationObserver((list) => {
+    for (const m of list) {
+      if (m.target.closest?.("#map") || m.target.parentElement?.closest?.("#map")) continue;
+      if (m.type === "characterData") pending.add(m.target);
+      else m.addedNodes.forEach((n) => pending.add(n));
+    }
+    if (pending.size && !queued) { queued = true; requestAnimationFrame(flush); }
+  });
+  obs.observe(document.body, OPTS);
 }
