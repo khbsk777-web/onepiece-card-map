@@ -36,6 +36,8 @@
 
 <div class="filters" role="toolbar" aria-label="絞り込み">
   <button id="stockListBtn" class="chip stock-list" type="button">📋 在庫リスト</button>
+  <button id="hereBtn" class="chip here-chip" type="button">📍 いるお店で報告</button>
+  <button id="itemQChip" class="chip on" type="button" hidden></button>
   <select id="placesMode" class="chip-select" aria-label="周辺のお店の表示"><option value="all">🏪 周辺：全部</option><option value="conv">🏪 コンビニだけ</option><option value="off">🙈 未登録をかくす</option></select>
   <button id="hideUnregBtn" class="chip" type="button" aria-pressed="false">🙈 未登録をかくす</button>
   <button class="chip on" data-f="all" type="button">すべて</button>
@@ -48,6 +50,18 @@
 
 <div id="stockStrip" class="stock-strip" hidden aria-label="100km以内の在庫あり"></div>
 <main id="map" aria-label="地図"></main>
+<div id="favNews" class="release-banner fav-news" hidden><span role="button" tabindex="0"></span><button type="button" aria-label="閉じる">×</button></div>
+<div id="postBar" class="post-bar" role="status" hidden></div>
+<div id="guide" class="x-modal" role="dialog" aria-modal="true" hidden>
+  <div class="x-card guide-card">
+    <div class="g-ic" aria-hidden="true"></div>
+    <h2></h2>
+    <p></p>
+    <div class="g-dots" aria-hidden="true"></div>
+    <button class="btn g-next" type="button">次へ</button>
+    <button class="x-today g-skip" type="button">スキップ</button>
+  </div>
+</div>
 <div id="releaseBanner" class="release-banner" hidden><span role="button" tabindex="0"></span><button type="button" aria-label="閉じる">×</button></div>
 
 <div id="modeBanner" class="mode-banner" hidden>

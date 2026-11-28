@@ -224,3 +224,38 @@ html[data-theme=dark] .strip-item{background:#111827;color:var(--ink);border-col
 html[data-theme=dark] .hours{color:#cbd5e1}
 html[data-theme=dark] .go-btn{background:#1e3a8a;color:#dbeafe;border-color:#1e40af}
 html[data-theme=dark] .go-info{color:#93c5fd}
+
+/* いるお店で報告 */
+.chip.here-chip{background:#d62828;border-color:#d62828;color:#fff;font-weight:800}
+.here-card{border:1px solid #e5e7eb;border-radius:14px;padding:10px 12px;margin:8px 0}
+.here-card .row{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}
+.here-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.btn.here{margin:0;padding:12px 2px;font-size:14px}
+.btn.here.in{background:var(--in);color:#fff}.btn.here.low{background:var(--low);color:#14213d}.btn.here.out{background:#6b7280;color:#fff}
+.small-btn{font-size:12px;padding:6px;margin-top:6px}
+/* 報告のあとのバー */
+.post-bar{position:fixed;left:10px;right:10px;bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:2500;background:#14213d;color:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:14px}
+.post-bar[hidden]{display:none}
+.post-bar .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.post-bar button{border:0;border-radius:999px;padding:6px 12px;font-weight:800;background:#f2c14e;color:#14213d}
+.post-bar button:disabled{background:#475569;color:#cbd5e1}
+.post-bar .next{margin-top:8px;padding-top:8px;border-top:1px solid #334155;display:flex;justify-content:space-between;align-items:center;gap:8px}
+/* お気に入りの新着 */
+.release-banner.fav-news{background:#fde2e4;top:150px}
+body.has-strip .release-banner.fav-news{top:196px}
+/* ガイド */
+.guide-card .g-ic{font-size:56px;line-height:1.2}
+.g-dots{color:#94a3b8;letter-spacing:4px;margin:4px 0 8px}
+/* LINE */
+.btn.line-share{display:block;text-align:center;text-decoration:none;background:#06c755;color:#fff;margin-top:8px}
+/* 商品名で探す */
+.item-q{width:100%;box-sizing:border-box;font-size:16px;padding:10px 12px;border:2px solid #f2c14e;border-radius:12px;margin:4px 0 6px}
+/* 情報の新しさ */
+.age-new{color:#15803d !important;font-weight:800}.age-mid{color:#6b7280}.age-old{color:#b0b7c3}
+.pinwrap.fresh::before{content:"";position:absolute;left:-6px;top:-6px;width:38px;height:38px;border-radius:50%;border:3px solid #22c55e;animation:freshring 1.6s ease-out infinite;pointer-events:none}
+@keyframes freshring{from{transform:scale(.6);opacity:1}to{transform:scale(1.4);opacity:0}}
+/* 文字を大きく（地図の中は変えない） */
+html.big-text .sheet,html.big-text .filters,html.big-text .stock-strip,html.big-text .x-card,html.big-text .post-bar,html.big-text .release-banner{zoom:1.18}
+html.big-text .fab{zoom:1.12}
+html[data-theme=dark] .here-card{border-color:#374151}
+html[data-theme=dark] .item-q{background:#1f2937;color:var(--ink)}

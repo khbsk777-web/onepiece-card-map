@@ -7,6 +7,9 @@ export const PRODUCTS = { booster: "ブースターパック", extra: "エクス
 export const STATUS = { in: "⭐ 在庫あり", low: "⭐ 残りわずか", out: "売り切れ", soon: "入荷予定", na: "取り扱いなし" };
 export const SALE = { pack: "バラ売り", box: "BOX", lottery: "抽選", other: "その他" };
 export const LIMIT = { none: "制限なし", p1: "1人1パック", p2: "1人2パック", p3: "1人3パック", p5: "1人5パック", p10: "1人10パック", box1: "1人1BOX" };
+// 商品名で探す（ひらがな・カタカナ・全角半角のちがいはあまり気にしない）
+const kana = (v) => String(v || "").normalize("NFKC").toLowerCase().replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/\s+/g, "");
+export const matchItem = (r, q) => kana([r.itemName, r.setCode, r.note].filter(Boolean).join(" ")).includes(kana(q));
 // 「もうなかった」が「まだあった」より多い報告は、売り切れとして扱う
 export const effStatus = (r) => (r && (r.gone || 0) > (r.still || 0) && ["in", "low"].includes(r.status) ? "out" : r?.status);
 const PREFS = "北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県".split(" ");
@@ -116,11 +119,13 @@ export function latestFor(reports, storeId, product) {
   }
   return null;
 }
-export function visibleStores(stores, reports, { filter, product, pref, favs }, now = Date.now()) {
+export function visibleStores(stores, reports, { filter, product, pref, favs, itemQ }, now = Date.now()) {
   const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
   return stores.filter((s) => {
     if (pref && s.pref !== pref) return false;
     const r = latestFor(reports, s.id, product);
+    // 商品名で探す：最新の報告の商品名に入っていて、在庫ありのお店だけ
+    if (itemQ && !(r && ["in", "low"].includes(effStatus(r)) && matchItem(r, itemQ))) return false;
     if (filter === "fav") return favs && favs.has(s.id);
     if (filter === "stock") return r && ["in", "low"].includes(effStatus(r)) && now - r.createdAt < STALE_H * 3600e3;
     if (filter === "today") return r && r.createdAt >= startOfDay.getTime();
@@ -156,7 +161,8 @@ function render() {
     const ch = chainOf(s.name);
     // 在庫あり（最近の報告）は⭐マークでひと目で分かるように
     const star = (cls === "in" || cls === "low") && !stale;
-    const wrap = el("div", { class: "pinwrap" + (star ? " has-star" : "") }, el("div", { class: `pin ${cls}${stale ? " stale" : ""}` }),
+    const fresh = r && Date.now() - r.createdAt < 30 * 60e3; // 30分以内の報告は光らせる
+    const wrap = el("div", { class: "pinwrap" + (star ? " has-star" : "") + (fresh ? " fresh" : "") }, el("div", { class: `pin ${cls}${stale ? " stale" : ""}` }),
       star ? el("span", { class: "pin-star", text: "⭐" }) : null, ch ? cvsBadge(ch) : null);
     const icon = L.divIcon({ className: "", html: wrap, iconSize: [26, 26], iconAnchor: [13, 26] });
     if (star && !S.map.getPane("stock")) S.map.createPane("stock").style.zIndex = 660; // 在庫ありはほかのお店より前に出す
@@ -687,6 +693,9 @@ async function showReleaseBanner() {
   b.querySelector("button").onclick = () => { b.hidden = true; };
 }
 
+// 情報の新しさ：30分以内＝新鮮、3時間以内＝ふつう、それより前＝古め
+function ageClass(t) { const m = (Date.now() - t) / 60e3; return m < 30 ? "age-new" : m < 180 ? "age-mid" : "age-old"; }
+
 // ---------- 近くの在庫あり・お気に入り ----------
 function storeRow(s, r, distKm) {
   const st = r ? effStatus(r) : null;
@@ -695,7 +704,7 @@ function storeRow(s, r, distKm) {
       el("b", { text: (S.favs.has(s.id) ? "❤️ " : "") + s.name }), el("span", { class: "meta", text: distKm != null ? `${distKm < 1 ? Math.round(distKm * 1000) + "m" : distKm.toFixed(1) + "km"}` : "" })),
     r ? el("div", {}, el("span", { class: `badge ${st}`, text: STATUS[st] }), " ", itemLabel(r) || PRODUCTS[r.product] || "",
       r.limit && r.limit !== "none" ? el("span", { class: "meta", text: `・${LIMIT[r.limit]}` }) : null,
-      el("span", { class: "meta", text: `・${timeAgo(r.createdAt)}` }))
+      el("span", { class: `meta age ${ageClass(r.createdAt)}`, text: `・${timeAgo(r.createdAt)}` }))
       : el("div", { class: "meta", text: `最近${DAYS}日の報告はまだありません` }));
 }
 // 在庫がある報告のリスト：距離（10〜300km・全国）と並び順（近い順・新しい順）を選べる
@@ -718,6 +727,8 @@ async function openNearby() {
     el("option", { value: "near", text: "近い順", disabled: !me }), el("option", { value: "new", text: "新しい順" }));
   sortSel.value = sort;
   const box = el("div");
+  const q = el("input", { type: "search", class: "item-q", placeholder: "🔎 商品名で探す（例：最強の戦士）", value: S.itemQ || "", enterkeyhint: "search" });
+  q.oninput = () => { S.itemQ = q.value.trim(); syncItemChip(); render(); draw(); };
   const draw = () => {
     const now = Date.now();
     const seen = new Set();
@@ -727,6 +738,7 @@ async function openNearby() {
       if (S.product && r.product !== S.product) continue;
       seen.add(r.storeId); // お店ごとに一番新しい報告だけ
       if (!["in", "low"].includes(effStatus(r)) || now - r.createdAt > STALE_H * 3600e3) continue;
+      if (S.itemQ && !matchItem(r, S.itemQ)) continue;
       const s = S.stores.find((x) => x.id === r.storeId);
       if (!s) continue;
       const d = me ? distM(me, s) / 1000 : null;
@@ -744,11 +756,13 @@ async function openNearby() {
   draw();
   openSheet(el("h2", { text: "📋 在庫ありの報告リスト" }),
     el("p", { class: "sub", text: `最近${STALE_H}時間に「在庫あり」「残りわずか」と報告されたお店です（お店ごとに最新の報告）。${me ? "" : "位置情報を許可すると距離で絞りこめます。"}` }),
+    q,
     el("div", { class: "two-sel" }, el("div", {}, el("label", { text: "現在地からの距離" }), sel), el("div", {}, el("label", { text: "並び順" }), sortSel)),
     box,
     el("button", { class: "btn ghost", type: "button", text: "閉じる", onclick: closeSheet }));
 }
 function openFavorites() {
+  markFavSeen(); $("#favNews").hidden = true;
   const list = S.stores.filter((s) => S.favs.has(s.id));
   const me = S.myPos;
   openSheet(el("h2", { text: "❤️ お気に入りのお店" }),
@@ -932,6 +946,147 @@ async function openAdmin() {
     el("button", { class: "btn ghost", type: "button", text: "閉じる", onclick: closeSheet }));
 }
 
+// ---------- (2) ワンタップ報告：いちばん近いお店を自動で選ぶ ----------
+const LAST_PRODUCT_KEY = "opmap-last-product";
+function lastProduct() { try { const v = localStorage.getItem(LAST_PRODUCT_KEY); return PRODUCTS[v] ? v : "booster"; } catch { return "booster"; } }
+async function openHere() {
+  let me;
+  try { me = await getPos(); } catch { return toast("位置情報を許可すると、いるお店を自動で選べます"); }
+  const cands = [
+    ...S.stores.map((s) => ({ s, d: distM(me, s) })),
+    ...[...placeById.values()].filter((p) => p.kind !== "station" && !isRegistered(p)).map((p) => ({ p, d: distM(me, p) })),
+  ].filter((x) => x.d <= 300).sort((a, b) => a.d - b.d).slice(0, 4);
+  if (!cands.length) {
+    if (S.map.getZoom() < PLACE_MIN_ZOOM) { S.map.setView([me.lat, me.lng], 17); loadPlaces(); }
+    return toast("300m以内にお店が見つかりませんでした。地図からお店を選んでね");
+  }
+  const pick = (x) => {
+    const name = x.s ? x.s.name : x.p.name;
+    const box = el("div", { class: "here-card" },
+      el("div", { class: "row" }, el("b", { text: name }), el("span", { class: "meta", text: `${Math.round(x.d)}m` })),
+      el("div", { class: "here-btns" },
+        ...[["in", "⭐ あった"], ["low", "⭐ 残りわずか"], ["out", "❌ なかった"]].map(([st, label]) => {
+          const b = el("button", { class: `btn here ${st}`, type: "button", text: label });
+          b.onclick = busy(b, () => quickReport(x, st));
+          return b;
+        })),
+      el("button", { class: "btn ghost small-btn", type: "button", text: "くわしく報告する（商品名・購入制限など）",
+        onclick: () => (x.s ? openReportForm(x.s, null, "in") : openReportForm({ id: null, name: x.p.name, lat: x.p.lat, lng: x.p.lng }, x.p, "in")) }));
+    return box;
+  };
+  openSheet(el("h2", { text: "📍 いるお店で報告" }),
+    el("p", { class: "sub", text: `近い順に${cands.length}件。${PRODUCTS[lastProduct()]}の在庫を、ボタン1つで報告できます。` }),
+    ...cands.map(pick));
+}
+async function quickReport(x, status) {
+  if (!ready()) return;
+  if (!(await nearCheck(x.s || x.p))) return;
+  let s = x.s;
+  if (!s) {
+    s = await storeForPlace(x.p);
+    if (!s) return openReportForm({ id: null, name: x.p.name, lat: x.p.lat, lng: x.p.lng }, x.p, status); // 都道府県が分からないときは通常の画面で
+    render();
+  }
+  const payload = { storeId: s.id, product: lastProduct(), setCode: "", status, saleType: "pack", note: "" };
+  if (!navigator.onLine) { queueReport(payload); closeSheet(); return toast("📶 電波がないので、報告をスマホに保存しました。つながったら自動で送ります"); }
+  const rep = await S.backend.addReport(payload);
+  S.reports.unshift(rep); render(); openStore(s.id); afterReport(rep, s);
+}
+
+// ---------- (7)(10) 報告のあと：取り消しボタン（10秒）と、近くの未報告のお店 ----------
+let postTimer;
+function afterReport(rep, s) {
+  try { localStorage.setItem(LAST_PRODUCT_KEY, rep.product); } catch { /* なにもしない */ }
+  const bar = $("#postBar");
+  const undo = el("button", { type: "button", class: "undo", text: "取り消す" });
+  undo.onclick = busy(undo, async () => {
+    await S.backend.deleteReport(rep.id);
+    S.reports = S.reports.filter((x) => x.id !== rep.id); render(); openStore(s.id);
+    bar.hidden = true; toast("報告を取り消しました");
+  });
+  // 1km以内で、まだ報告がないお店（開拓のチャンス）
+  let next = null;
+  const me = S.myPos || s;
+  for (const p of placeById.values()) {
+    if (p.kind === "station" || isRegistered(p)) continue;
+    const d = distM(me, p);
+    if (d <= 1000 && (!next || d < next.d)) next = { p, d };
+  }
+  const nextBox = next ? el("div", { class: "next" }, `🏴 近くに未報告のお店：${next.p.name}（${Math.round(next.d)}m）`,
+    el("button", { type: "button", text: "見る", onclick: () => { bar.hidden = true; closeSheet(); S.map.setView([next.p.lat, next.p.lng], 17); openPlace(next.p); } })) : null;
+  bar.replaceChildren(el("div", { class: "row" }, el("b", { text: "✅ 報告ありがとう！ +10pt" }), undo), nextBox);
+  bar.hidden = false;
+  clearTimeout(postTimer); postTimer = setTimeout(() => { bar.hidden = true; }, next ? 15000 : 10000);
+  undo.disabled = false; setTimeout(() => { undo.disabled = true; undo.textContent = "取り消しは終了"; }, 10000);
+}
+
+// ---------- (8) 最近見たお店 ----------
+const RECENT_KEY = "opmap-recent";
+function readRecent() { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch { return []; } }
+function pushRecent(id) { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecent().filter((x) => x !== id)].slice(0, 10))); } catch { /* なにもしない */ } }
+function openRecent() {
+  const list = readRecent().map((id) => S.stores.find((s) => s.id === id)).filter(Boolean);
+  openSheet(el("h2", { text: "🕘 最近見たお店" }),
+    ...(list.length ? list.map((s) => storeRow(s, latestFor(S.reports, s.id, S.product), S.myPos ? distM(S.myPos, s) / 1000 : null))
+      : [el("p", { class: "small", text: "まだありません。お店を開くとここに残ります（最大10件）。" })]),
+    el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
+}
+
+// ---------- (9) 文字・ボタンの大きさ ----------
+const BIG_KEY = "opmap-big-text";
+function bigText() { try { return localStorage.getItem(BIG_KEY) === "1"; } catch { return false; } }
+function setBigText(on) { try { localStorage.setItem(BIG_KEY, on ? "1" : "0"); } catch { /* なにもしない */ } document.documentElement.classList.toggle("big-text", on); }
+
+// ---------- (1) お気に入りの新着まとめ ----------
+const FAV_SEEN_KEY = "opmap-fav-seen";
+function favSeen() { try { return Number(localStorage.getItem(FAV_SEEN_KEY)) || 0; } catch { return 0; } }
+function markFavSeen() { try { localStorage.setItem(FAV_SEEN_KEY, String(Date.now())); } catch { /* なにもしない */ } }
+let favNewsShown = false;
+function showFavNews() {
+  if (favNewsShown || !S.favs.size) return;
+  const seen = favSeen();
+  if (!seen) { markFavSeen(); return; } // はじめての日は数えない
+  const news = S.reports.filter((r) => S.favs.has(r.storeId) && r.createdAt > seen && (r.flags || 0) < HIDE_FLAGS);
+  favNewsShown = true;
+  if (!news.length) return;
+  const stock = news.filter((r) => ["in", "low"].includes(effStatus(r))).length;
+  const b = $("#favNews");
+  b.querySelector("span").textContent = `❤️ お気に入りのお店に新しい報告が${news.length}件${stock ? `（⭐在庫あり${stock}件）` : ""}`;
+  b.hidden = false;
+  b.querySelector("span").onclick = () => { b.hidden = true; markFavSeen(); openFavorites(); };
+  b.querySelector("button").onclick = () => { b.hidden = true; markFavSeen(); };
+}
+
+// ---------- (5) はじめての人向けガイド ----------
+const GUIDE_KEY = "opmap-guide-done";
+const GUIDE = [
+  { icon: "🗺", title: "在庫が地図でひと目で分かる", text: "⭐がついたピンは「在庫あり」のお店です。上の黄色い帯には、100km以内の在庫ありのお店が近い順に出ます。" },
+  { icon: "📍", title: "見つけたらワンタップで報告", text: "お店で「📍 いるお店で報告」を押して「あった／なかった」を選ぶだけ。ログインが必要です（無料）。" },
+  { icon: "🏆", title: "報告でポイント・称号がもらえる", text: "報告10pt・👍5pt・開拓20pt。月間ランキングで表彰されます。右下の🧭メニューから、いろいろな機能を使えます。" },
+];
+function openGuide(i = 0) {
+  const g = GUIDE[i];
+  const m = $("#guide");
+  m.querySelector(".g-ic").textContent = g.icon;
+  m.querySelector("h2").textContent = g.title;
+  m.querySelector("p").textContent = g.text;
+  m.querySelector(".g-dots").textContent = GUIDE.map((_, k) => (k === i ? "●" : "○")).join(" ");
+  const next = m.querySelector(".g-next");
+  next.textContent = i < GUIDE.length - 1 ? "次へ" : "はじめる！";
+  next.onclick = () => (i < GUIDE.length - 1 ? openGuide(i + 1) : closeGuide());
+  m.querySelector(".g-skip").onclick = closeGuide;
+  m.hidden = false;
+}
+function closeGuide() { $("#guide").hidden = true; try { localStorage.setItem(GUIDE_KEY, "1"); } catch { /* なにもしない */ } }
+
+// ---------- (3) 商品名で探しているときの表示 ----------
+function syncItemChip() {
+  const c = $("#itemQChip");
+  if (!c) return;
+  c.hidden = !S.itemQ;
+  c.textContent = S.itemQ ? `🔎 ${S.itemQ} ×` : "";
+}
+
 function aboutLink(text = "ℹ️ このアプリについて・プライバシー・規約") {
   return el("a", { class: "btn ghost", href: "about.html", text });
 }
@@ -1047,6 +1202,11 @@ async function openRanking() {
     el("button", { class: "btn ghost", type: "button", text: "もどる", onclick: openFeed }));
 }
 
+// LINEで送る（友だちを選んで送れる）
+function lineShareBtn(text, url) {
+  return el("a", { class: "btn line-share", href: `https://line.me/R/share?text=${encodeURIComponent(text.replace(/\n#.*$/s, "") + "\n" + url)}`, target: "_blank", rel: "noopener noreferrer", text: "LINEで送る" });
+}
+
 function storeShareText(s, reps) {
   const r = [...reps].sort((a, b) => b.createdAt - a.createdAt)[0];
   // お店の名前や場所は入れない（どこにいるか分からないように）
@@ -1058,6 +1218,7 @@ function storeShareText(s, reps) {
 async function openStore(id) {
   const s = S.stores.find((x) => x.id === id);
   if (!s) return;
+  pushRecent(id);
   const reps = S.reports.filter((r) => r.storeId === id);
   const ids = reps.map((r) => r.id);
   const reportBtn = el("div", {}, quickButtons((k) => openReportForm(s, null, k)),
@@ -1098,7 +1259,7 @@ async function openStore(id) {
     S.stores = S.stores.filter((x) => x.id !== s.id); closeSheet(); render(); toast("お店を削除しました");
   });
   loadTrends().then((t) => { trend.textContent = trendText(t[s.id]); });
-  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, hoursEl, fav, goRow, trend, reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), APP_URL), adminDel);
+  openSheet(ch ? el("div", { class: "sheet-badge" }, cvsBadge(ch)) : null, el("h2", { text: s.name }), el("p", { class: "addr", text: `📍 ${[s.pref, s.address].filter(Boolean).join("") || "住所未登録"}` }), pioneerOf(s) ? el("p", { class: "pioneer", text: `🏴 開拓者：${pioneerOf(s)}さん` }) : null, hoursEl, fav, goRow, trend, reportBtn, photoSection(s, async () => s), listBox, gmap, xShareBtn(storeShareText(s, reps), APP_URL), lineShareBtn(storeShareText(s, reps), APP_URL), adminDel);
   if (S.user?.emailVerified && ids.length) {
     try { [S.liked, S.flagged, S.stilled, S.goned] = await Promise.all(["like", "flag", "still", "gone"].map((k) => S.backend.myVotes(ids, k))); } catch {}
   }
@@ -1352,7 +1513,7 @@ function openReportForm(s, place = null, initStatus = "in") {
       rep = await S.backend.addReport({ ...base, note: clean(pre + n, 100) });
     }
     rememberItem(itemName);
-    S.reports.unshift(rep); render(); toast("報告ありがとう！ +10pt"); openStore(s.id);
+    S.reports.unshift(rep); render(); openStore(s.id); afterReport(rep, s);
   });
   openSheet(el("h2", { text: "在庫を報告" }), el("p", { class: "sub", text: s.name }),
     prefLabel, prefSel,
@@ -1460,6 +1621,9 @@ function openFeed() {
       el("button", { class: "btn sec", type: "button", text: S.heat ? "🔥 ヒート：オン" : "🔥 ヒート：オフ",
         onclick: (e) => { S.heat = !S.heat; renderHeat(); e.currentTarget.textContent = S.heat ? "🔥 ヒート：オン" : "🔥 ヒート：オフ"; if (S.heat) toast("在庫ありの報告が多い地域ほど赤くなります"); } }),
       el("button", { class: "btn sec", type: "button", text: `🌙 表示：${THEMES[getTheme()]}`, onclick: (e) => cycleTheme(e.currentTarget) }),
+      el("button", { class: "btn sec", type: "button", text: "🕘 最近見た", onclick: openRecent }),
+      el("button", { class: "btn sec", type: "button", text: `🔠 文字：${bigText() ? "大きい" : "ふつう"}`, onclick: (e) => { setBigText(!bigText()); e.currentTarget.textContent = `🔠 文字：${bigText() ? "大きい" : "ふつう"}`; } }),
+      el("button", { class: "btn sec", type: "button", text: "❓ 使い方", onclick: () => { closeSheet(); openGuide(); } }),
       S.isAdmin ? el("button", { class: "btn sec admin", type: "button", text: "🛠 管理", onclick: openAdmin }) : null,
       releaseMode ? el("button", { class: "btn sec release", type: "button", text: "🎉 発売日モード", onclick: openReleaseDay }) : null),
     el("h3", { class: "mini-h", text: "🆕 新着の報告" }),
@@ -1469,7 +1633,8 @@ function openFeed() {
         el("div", { class: "row", style: "display:flex;justify-content:space-between" }, el("b", { text: s.name }), el("span", { class: "meta", text: timeAgo(r.createdAt) })),
         el("div", {}, el("span", { class: `badge ${effStatus(r)}`, text: STATUS[effStatus(r)] }), " ", PRODUCTS[r.product] || "", itemLabel(r) ? ` ${itemLabel(r)}` : ""));
     }) : [el("p", { class: "small", text: "まだ報告がありません" })]),
-    xShareBtn(`ワンピースカードの在庫を、みんなで報告し合う地図アプリ「トレジャーカードマップ」を使ってみてね🗺\n${TAGS}`, APP_URL));
+    xShareBtn(`ワンピースカードの在庫を、みんなで報告し合う地図アプリ「トレジャーカードマップ」を使ってみてね🗺\n${TAGS}`, APP_URL),
+    lineShareBtn("ワンピースカードの在庫を、みんなで報告し合える地図アプリ「トレジャーカードマップ」だよ🗺 無料で使えるよ", APP_URL));
 }
 
 // ---------- 絞り込み ----------
@@ -1582,6 +1747,9 @@ async function main() {
   $("#addStoreBtn").onclick = openAddStore;
   $("#feedBtn").onclick = openFeed;
   $("#stockListBtn").onclick = openNearby;
+  $("#hereBtn").onclick = openHere;
+  $("#itemQChip").onclick = () => { S.itemQ = ""; syncItemChip(); render(); };
+  setBigText(bigText());
   applyTheme();
   window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
   showReleaseBanner();
@@ -1602,12 +1770,17 @@ async function main() {
   $("#xModalClose").onclick = closeModal;
   $("#xModalToday").onclick = () => { try { localStorage.setItem(XKEY, today); } catch { /* なにもしない */ } closeModal(); };
   modal.onclick = (e) => { if (e.target === modal) closeModal(); };
-  if (off !== today && !new URLSearchParams(location.search).get("s")) modal.hidden = false;
+  // はじめての人にはガイドを先に出す（その回はシェアのお知らせは出さない）
+  let guideDone = false;
+  try { guideDone = localStorage.getItem(GUIDE_KEY) === "1"; } catch { /* なにもしない */ }
+  if (!guideDone && !new URLSearchParams(location.search).get("s")) openGuide();
+  else if (off !== today && !new URLSearchParams(location.search).get("s")) modal.hidden = false;
   $("#modeCancel").onclick = () => { S.mode = null; $("#modeBanner").hidden = true; };
   $(".sheet-close").onclick = closeSheet;
   loadFukuoka(); // 待たずに先に読み込む（お店の点はすぐ出す）
   loadPrefData();
   await loadData();
+  showFavNews();
   // シェアされたリンク（?s=お店ID）から開いたら、そのお店を表示
   try {
     const sid = new URLSearchParams(location.search).get("s");
