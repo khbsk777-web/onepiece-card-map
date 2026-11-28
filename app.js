@@ -1076,7 +1076,14 @@ async function main() {
   $("#addStoreBtn").onclick = openAddStore;
   $("#feedBtn").onclick = openFeed;
   // 開いてすぐ見える「𝕏」ボタン：アプリを紹介する文をXに入れて開く
-  $("#xShareFab").href = `https://x.com/intent/post?text=${encodeURIComponent(`ワンピースカードの在庫を、みんなで報告し合える地図アプリ「トレジャーカードマップ」🗺\nコンビニ・本屋・ヨドバシの入荷情報がひと目で分かる！無料で使えるよ\n${TAGS}`)}&url=${encodeURIComponent(APP_URL)}`;
+  $("#xShareFab").href = `https://x.com/intent/post?text=${encodeURIComponent(`みんなでシェアしてカード集めよう！🗺\nワンピースカードの在庫を報告し合える地図アプリ「トレジャーカードマップ」\nコンビニ・本屋・ヨドバシの入荷情報がひと目で分かる！無料で使えるよ\n${TAGS}`)}&url=${encodeURIComponent(APP_URL)}`;
+  // 開いたときに「シェアしてね」の吹き出しを少しだけ出す
+  const bubble = $("#xBubble");
+  bubble.hidden = false;
+  const hideBubble = () => { bubble.hidden = true; };
+  bubble.onclick = () => { hideBubble(); $("#xShareFab").click(); };
+  $("#xShareFab").addEventListener("click", hideBubble);
+  setTimeout(hideBubble, 8000);
   $("#modeCancel").onclick = () => { S.mode = null; $("#modeBanner").hidden = true; };
   $(".sheet-close").onclick = closeSheet;
   loadFukuoka(); // 待たずに先に読み込む（お店の点はすぐ出す）
