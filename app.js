@@ -1232,7 +1232,7 @@ function initFilters() {
     S.placesMode = pm.value;
     try { localStorage.setItem("opmap-places-mode", S.placesMode); } catch {}
     renderPlaces(); loadPlaces(); renderFukuoka(); loadPrefData();
-    if (S.placesMode !== "off" && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます（コンビニ・ヨドバシは点で表示中）");
+    if (S.placesMode !== "off" && S.map.getZoom() < PLACE_MIN_ZOOM) toast("地図を拡大すると、周辺のお店が出てきます（コンビニ・家電量販店は点で表示中）");
   };
   const pf = $("#productFilter");
   pf.replaceChildren(el("option", { value: "", text: "全商品" }), ...Object.entries(PRODUCTS).map(([k, v]) => el("option", { value: k, text: v })));
@@ -1309,7 +1309,7 @@ async function main() {
   window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
   showReleaseBanner();
   // 開いてすぐ見える「𝕏」ボタン：アプリを紹介する文をXに入れて開く
-  $("#xShareFab").href = `https://x.com/intent/post?text=${encodeURIComponent(`みんなでシェアしてカード集めよう！🗺\nワンピースカードの在庫を報告し合える地図アプリ「トレジャーカードマップ」\nコンビニ・本屋・ヨドバシの入荷情報がひと目で分かる！無料で使えるよ\n${TAGS}`)}&url=${encodeURIComponent(APP_URL)}`;
+  $("#xShareFab").href = `https://x.com/intent/post?text=${encodeURIComponent(`みんなでシェアしてカード集めよう！🗺\nワンピースカードの在庫を報告し合える地図アプリ「トレジャーカードマップ」\nコンビニ・本屋・家電量販店の入荷情報がひと目で分かる！無料で使えるよ\n${TAGS}`)}&url=${encodeURIComponent(APP_URL)}`;
   // 開いたときに画面の真ん中に「Xでシェアしてね」を出す（「今日はもう表示しない」を押した日は出さない）
   const XKEY = "opmap-xmodal-off";
   const today = new Date().toLocaleDateString("ja-JP");
